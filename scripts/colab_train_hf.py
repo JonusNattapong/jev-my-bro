@@ -76,6 +76,8 @@ subprocess.run(
         os.environ.get("SCORE_CLASS_BALANCE_BETA", "0.0"),
         "--score-level-weights",
         os.environ.get("SCORE_LEVEL_WEIGHTS", ""),
+        "--score-cumulative-weight",
+        os.environ.get("SCORE_CUMULATIVE_WEIGHT", "0.0"),
     ] + checkpoint_args,
     cwd=ROOT,
     check=True,

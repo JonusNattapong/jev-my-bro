@@ -13,7 +13,7 @@ from laya.common import QTYPES, proper_reward
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
 from jevbro.data import load_items
-from jevbro.ordinal import effective_number_weights, ranked_probability_loss
+from jevbro.ordinal import cumulative_ordinal_loss, effective_number_weights, ranked_probability_loss
 
 DEFAULT_BASE = "convaiinnovations/laya-multilingual"
 
@@ -36,6 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-rps-weight", type=float, default=1.0)
     parser.add_argument("--score-class-balance-beta", type=float, default=0.0)
     parser.add_argument("--score-level-weights", default="")
+    parser.add_argument("--score-cumulative-weight", type=float, default=0.0)
     parser.add_argument("--encoder-lr", type=float, default=2.5e-5)
     parser.add_argument("--head-lr", type=float, default=1.0e-4)
     parser.add_argument("--sigma-start", type=float, default=0.4)
@@ -263,9 +264,11 @@ def main() -> None:
             ).sum(-1)
             probs = torch.softmax(logits.masked_fill(~marker_mask, -1e4), -1)
             loss_rps = ranked_probability_loss(probs, target, marker_mask)
+            loss_cumulative = cumulative_ordinal_loss(probs, target, marker_mask)
             is_score = (qtype == QTYPES["score"]).float()
             supervised = loss_ce * (1.0 - is_score + is_score * args.score_ce_weight)
             supervised = supervised + is_score * args.score_rps_weight * loss_rps
+            supervised = supervised + is_score * args.score_cumulative_weight * loss_cumulative
             loss = ((loss_rl + supervised) * item_weight).mean() / args.grad_accum + 0.0 * action_logits.sum()
 
             scaler.scale(loss).backward()
@@ -324,6 +327,7 @@ def main() -> None:
                 "score_rps_weight": args.score_rps_weight,
                 "score_class_balance_beta": args.score_class_balance_beta,
                 "score_level_weights": args.score_level_weights,
+                "score_cumulative_weight": args.score_cumulative_weight,
             }
             save_checkpoint(model, tokenizer, epoch_cfg, f"{args.output}/epoch-{epoch + 1}")
             print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
@@ -342,6 +346,7 @@ def main() -> None:
         "score_rps_weight": args.score_rps_weight,
         "score_class_balance_beta": args.score_class_balance_beta,
         "score_level_weights": args.score_level_weights,
+        "score_cumulative_weight": args.score_cumulative_weight,
     }
     model.eval()
     save_checkpoint(model, tokenizer, cfg, args.output)

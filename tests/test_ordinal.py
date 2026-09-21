@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from jevbro.ordinal import (
+    cumulative_ordinal_loss,
     effective_number_weights,
     expected_level,
     hard_level_from_expected,
@@ -30,6 +31,14 @@ def test_ranked_probability_loss_penalizes_far_errors_more() -> None:
     near = torch.tensor([[0.0, 0.0, 0.0, 1.0, 0.0]])
     far = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]])
     assert ranked_probability_loss(near, target, mask).item() < ranked_probability_loss(far, target, mask).item()
+
+
+def test_cumulative_ordinal_loss_penalizes_far_errors_more() -> None:
+    target = torch.tensor([[0.0, 0.0, 1.0, 0.0, 0.0]])
+    mask = torch.ones_like(target, dtype=torch.bool)
+    near = torch.tensor([[0.0, 0.0, 0.0, 1.0, 0.0]])
+    far = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]])
+    assert cumulative_ordinal_loss(near, target, mask).item() < cumulative_ordinal_loss(far, target, mask).item()
 
 
 def test_effective_number_weights_upweight_rare_levels() -> None:

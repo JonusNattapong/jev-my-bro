@@ -7,6 +7,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 
 def ordinal_soft_target(label: int, levels: int = 5, sigma: float = 0.75) -> list[float]:
@@ -48,6 +49,20 @@ def ranked_probability_loss(
     cdf_t = torch.cumsum(target, dim=-1)
     levels = mask.sum(dim=-1).clamp(min=2).to(probabilities.dtype)
     return ((((cdf_p - cdf_t) ** 2) * mask).sum(dim=-1) / (levels - 1.0))
+
+
+def cumulative_ordinal_loss(
+    probabilities: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Binary cross entropy over cumulative ordinal boundaries."""
+    boundary_mask = mask[..., :-1] & mask[..., 1:]
+    pred_cdf = torch.cumsum(probabilities, dim=-1)[..., :-1].clamp(1e-6, 1.0 - 1e-6)
+    target_cdf = torch.cumsum(target, dim=-1)[..., :-1].clamp(0.0, 1.0)
+    losses = F.binary_cross_entropy(pred_cdf, target_cdf, reduction="none")
+    count = boundary_mask.sum(dim=-1).clamp(min=1).to(probabilities.dtype)
+    return (losses * boundary_mask).sum(dim=-1) / count
 
 
 def ranked_probability_score(pred: Sequence[float], target: Sequence[float]) -> float:

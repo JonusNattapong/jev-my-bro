@@ -21,9 +21,10 @@ os.environ.update({
     "TRAIN_GRAD_ACCUM": "4",
     "CHECKPOINT_EACH_EPOCH": "1",
     "SCORE_CE_WEIGHT": "1.0",
-    "SCORE_RPS_WEIGHT": "1.0",
+    "SCORE_RPS_WEIGHT": "0.5",
+    "SCORE_CUMULATIVE_WEIGHT": "1.0",
     "SCORE_CLASS_BALANCE_BETA": "0.0",
-    "SCORE_LEVEL_WEIGHTS": "1.0,3.0,1.0,1.0,1.0",
+    "SCORE_LEVEL_WEIGHTS": "1.0,1.5,1.0,1.0,1.0",
     "CHALLENGE_DATA": "data/score_v41_challenge.jsonl",
 })
 runpy = os.path.join(ROOT, "scripts", "colab_train_hf.py")
