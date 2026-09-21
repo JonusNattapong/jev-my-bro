@@ -8,7 +8,7 @@ from pathlib import Path
 import laya
 import numpy as np
 
-from jevbro.ordinal import quadratic_weighted_kappa, ranked_probability_score
+from jevbro.ordinal import hard_level_from_expected, quadratic_weighted_kappa, ranked_probability_score
 from jevbro.schema import read_cases
 
 
@@ -72,6 +72,7 @@ def main() -> None:
     score_rps_values: list[float] = []
     score_true_levels: list[int] = []
     score_pred_levels: list[int] = []
+    score_argmax_levels: list[int] = []
 
     for index, case in enumerate(cases, 1):
         result = agent.predict(case["state"], case["questions"])
@@ -90,12 +91,14 @@ def main() -> None:
                 predicted_label = "true" if float(answer["noul"]) >= 0.5 else "false"
                 correct = float(predicted_label == str(gold["label"]).lower())
             else:
-                predicted_level = int(np.argmax(pred))
+                predicted_level = hard_level_from_expected(float(answer["score"]), levels=len(pred))
+                argmax_level = int(np.argmax(pred))
                 gold_level = int(gold["label"])
                 correct = float(predicted_level == gold_level)
                 hard_error = abs(predicted_level - gold_level)
                 score_true_levels.append(gold_level)
                 score_pred_levels.append(predicted_level)
+                score_argmax_levels.append(argmax_level)
                 score_hard_errors.append(float(hard_error))
                 score_within_one.append(float(hard_error <= 1))
                 score_expected_errors.append(abs(float(answer["score"]) - float(gold["score"])))
@@ -138,6 +141,17 @@ def main() -> None:
             "recall": (score_confusion[level][level] / support) if support else None,
         }
 
+    score_argmax_confusion = [[0 for _ in range(5)] for _ in range(5)]
+    for truth, pred in zip(score_true_levels, score_argmax_levels):
+        score_argmax_confusion[truth][pred] += 1
+    score_argmax_recall = {}
+    for level in range(5):
+        support = sum(score_argmax_confusion[level])
+        score_argmax_recall[str(level)] = {
+            "support": support,
+            "recall": (score_argmax_confusion[level][level] / support) if support else None,
+        }
+
     report = {
         "model": args.model,
         "dataset": args.data,
@@ -154,6 +168,16 @@ def main() -> None:
         "score_rps": float(np.mean(score_rps_values)) if score_rps_values else None,
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
+        "score_decoder": "nearest_expected_level",
+        "score_argmax_accuracy": (
+            sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_argmax_levels))
+            / max(1, len(score_true_levels))
+        ),
+        "score_argmax_qwk": quadratic_weighted_kappa(score_true_levels, score_argmax_levels, levels=5)
+        if score_true_levels
+        else None,
+        "score_argmax_confusion_matrix": score_argmax_confusion,
+        "score_argmax_per_level_recall": score_argmax_recall,
         "by_primitive": primitive_report,
         "by_language": {
             lang: {"n": values["n"], "accuracy": values["correct"] / values["n"]}

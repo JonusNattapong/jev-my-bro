@@ -6,6 +6,7 @@ import torch
 from jevbro.ordinal import (
     effective_number_weights,
     expected_level,
+    hard_level_from_expected,
     ordinal_soft_target,
     quadratic_weighted_kappa,
     ranked_probability_loss,
@@ -43,3 +44,11 @@ def test_numpy_rps_and_qwk() -> None:
     far = [1.0, 0.0, 0.0, 0.0, 0.0]
     assert ranked_probability_score(near, target) < ranked_probability_score(far, target)
     assert quadratic_weighted_kappa([0, 1, 2, 3, 4], [0, 1, 2, 3, 4]) == pytest.approx(1.0)
+
+
+def test_expected_level_decoder_uses_nearest_ordinal_level() -> None:
+    assert hard_level_from_expected(0.49) == 0
+    assert hard_level_from_expected(0.50) == 1
+    assert hard_level_from_expected(1.49) == 1
+    assert hard_level_from_expected(1.50) == 2
+    assert hard_level_from_expected(4.8) == 4

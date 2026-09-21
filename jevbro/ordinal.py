@@ -22,6 +22,13 @@ def expected_level(probabilities: Sequence[float]) -> float:
     return float(sum(index * float(value) for index, value in enumerate(probabilities)))
 
 
+def hard_level_from_expected(value: float, levels: int = 5) -> int:
+    """Decode an ordinal score by nearest expected level, avoiding argmax collapse."""
+    if levels < 2:
+        raise ValueError("levels must be at least 2")
+    return max(0, min(levels - 1, int(math.floor(float(value) + 0.5))))
+
+
 def ranked_probability_loss(
     probabilities: torch.Tensor,
     target: torch.Tensor,
