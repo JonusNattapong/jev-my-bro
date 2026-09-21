@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Sequence
 
@@ -27,6 +28,13 @@ def hard_level_from_expected(value: float, levels: int = 5) -> int:
     if levels < 2:
         raise ValueError("levels must be at least 2")
     return max(0, min(levels - 1, int(math.floor(float(value) + 0.5))))
+
+
+def hard_level_from_thresholds(value: float, thresholds: Sequence[float]) -> int:
+    values = [float(threshold) for threshold in thresholds]
+    if any(right <= left for left, right in zip(values, values[1:])):
+        raise ValueError("thresholds must be strictly increasing")
+    return bisect_right(values, float(value))
 
 
 def ranked_probability_loss(

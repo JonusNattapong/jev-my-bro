@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-ce-weight", type=float, default=0.5)
     parser.add_argument("--score-rps-weight", type=float, default=1.0)
     parser.add_argument("--score-class-balance-beta", type=float, default=0.0)
+    parser.add_argument("--score-level-weights", default="")
     parser.add_argument("--encoder-lr", type=float, default=2.5e-5)
     parser.add_argument("--head-lr", type=float, default=1.0e-4)
     parser.add_argument("--sigma-start", type=float, default=0.4)
@@ -144,6 +145,15 @@ def main() -> None:
         device=device,
         dtype=torch.float32,
     )
+    if args.score_level_weights:
+        manual_weights = [float(value.strip()) for value in args.score_level_weights.split(",")]
+        if len(manual_weights) != 5 or any(value <= 0 for value in manual_weights):
+            raise SystemExit("--score-level-weights requires five positive comma-separated values")
+        score_level_weights = score_level_weights * torch.tensor(
+            manual_weights,
+            device=device,
+            dtype=torch.float32,
+        )
     print(f"[train] score_level_weights={score_level_weights.tolist()}", flush=True)
 
     encoder_params = [param for name, param in model.named_parameters() if name.startswith("encoder.")]
@@ -313,6 +323,7 @@ def main() -> None:
                 "score_ce_weight": args.score_ce_weight,
                 "score_rps_weight": args.score_rps_weight,
                 "score_class_balance_beta": args.score_class_balance_beta,
+                "score_level_weights": args.score_level_weights,
             }
             save_checkpoint(model, tokenizer, epoch_cfg, f"{args.output}/epoch-{epoch + 1}")
             print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
@@ -330,6 +341,7 @@ def main() -> None:
         "score_ce_weight": args.score_ce_weight,
         "score_rps_weight": args.score_rps_weight,
         "score_class_balance_beta": args.score_class_balance_beta,
+        "score_level_weights": args.score_level_weights,
     }
     model.eval()
     save_checkpoint(model, tokenizer, cfg, args.output)

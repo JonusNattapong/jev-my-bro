@@ -74,6 +74,45 @@ def soft_nll(rows: list[tuple[list[float], list[float]]], temperature: float) ->
     return total / max(1, len(rows))
 
 
+def fit_score_thresholds(
+    rows: list[tuple[list[float], list[float]]],
+    temperature: float,
+    levels: int = 5,
+) -> tuple[list[float], list[float]]:
+    values: list[float] = []
+    labels: list[int] = []
+    for logits, target in rows:
+        probs = torch.softmax(torch.tensor(logits, dtype=torch.float64) / temperature, -1)
+        values.append(float((probs * torch.arange(len(probs), dtype=torch.float64)).sum().item()))
+        labels.append(max(range(len(target)), key=target.__getitem__))
+
+    unique = sorted(set(values))
+    candidates = [unique[0] - 1e-6]
+    candidates.extend((left + right) / 2.0 for left, right in zip(unique, unique[1:]))
+    candidates.append(unique[-1] + 1e-6)
+    thresholds: list[float] = []
+    scores: list[float] = []
+    for boundary in range(levels - 1):
+        negatives = sum(label <= boundary for label in labels)
+        positives = len(labels) - negatives
+        best_threshold = candidates[0]
+        best_score = -1.0
+        for threshold in candidates:
+            true_negative = sum(label <= boundary and value <= threshold for value, label in zip(values, labels))
+            true_positive = sum(label > boundary and value > threshold for value, label in zip(values, labels))
+            balanced = 0.5 * (
+                true_negative / max(1, negatives) + true_positive / max(1, positives)
+            )
+            if balanced > best_score:
+                best_score = balanced
+                best_threshold = threshold
+        if thresholds and best_threshold <= thresholds[-1]:
+            best_threshold = thresholds[-1] + 1e-6
+        thresholds.append(float(best_threshold))
+        scores.append(float(best_score))
+    return thresholds, scores
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,12 +134,21 @@ def main() -> None:
             "soft_nll_after": soft_nll(selected, temperature),
         }
 
+    score_rows = [(logits, target) for row_type, logits, target in raw if row_type == 1]
+    score_thresholds, score_boundary_balanced_accuracy = fit_score_thresholds(
+        score_rows,
+        temperatures[1],
+    )
+
     cfg["temperature"] = temperatures
+    cfg["score_thresholds"] = score_thresholds
     Path(args.model, "rl_agent_config.json").write_text(
         json.dumps(cfg, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     report["temperature"] = temperatures
+    report["score_thresholds"] = score_thresholds
+    report["score_boundary_balanced_accuracy"] = score_boundary_balanced_accuracy
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")

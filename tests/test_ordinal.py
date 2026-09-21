@@ -7,6 +7,7 @@ from jevbro.ordinal import (
     effective_number_weights,
     expected_level,
     hard_level_from_expected,
+    hard_level_from_thresholds,
     ordinal_soft_target,
     quadratic_weighted_kappa,
     ranked_probability_loss,
@@ -52,3 +53,11 @@ def test_expected_level_decoder_uses_nearest_ordinal_level() -> None:
     assert hard_level_from_expected(1.49) == 1
     assert hard_level_from_expected(1.50) == 2
     assert hard_level_from_expected(4.8) == 4
+
+
+def test_threshold_decoder_uses_calibrated_boundaries() -> None:
+    thresholds = [0.8, 1.4, 2.6, 3.5]
+    assert hard_level_from_thresholds(0.79, thresholds) == 0
+    assert hard_level_from_thresholds(0.80, thresholds) == 1
+    assert hard_level_from_thresholds(1.80, thresholds) == 2
+    assert hard_level_from_thresholds(3.60, thresholds) == 4

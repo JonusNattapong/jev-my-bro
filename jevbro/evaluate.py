@@ -8,7 +8,12 @@ from pathlib import Path
 import laya
 import numpy as np
 
-from jevbro.ordinal import hard_level_from_expected, quadratic_weighted_kappa, ranked_probability_score
+from jevbro.ordinal import (
+    hard_level_from_expected,
+    hard_level_from_thresholds,
+    quadratic_weighted_kappa,
+    ranked_probability_score,
+)
 from jevbro.schema import read_cases
 
 
@@ -61,6 +66,8 @@ def main() -> None:
     args = parse_args()
     cases = read_cases(args.data)
     agent = laya.Agent(args.model, device=args.device)
+    config = json.loads(Path(args.model, "rl_agent_config.json").read_text(encoding="utf-8"))
+    score_thresholds = config.get("score_thresholds")
 
     primitive = defaultdict(lambda: {"n": 0, "correct": 0.0, "brier": 0.0, "soft_accuracy": 0.0})
     language = defaultdict(lambda: {"n": 0, "correct": 0.0})
@@ -73,6 +80,8 @@ def main() -> None:
     score_true_levels: list[int] = []
     score_pred_levels: list[int] = []
     score_argmax_levels: list[int] = []
+    score_nearest_levels: list[int] = []
+    score_threshold_levels: list[int] = []
 
     for index, case in enumerate(cases, 1):
         result = agent.predict(case["state"], case["questions"])
@@ -91,14 +100,22 @@ def main() -> None:
                 predicted_label = "true" if float(answer["noul"]) >= 0.5 else "false"
                 correct = float(predicted_label == str(gold["label"]).lower())
             else:
-                predicted_level = hard_level_from_expected(float(answer["score"]), levels=len(pred))
+                nearest_level = hard_level_from_expected(float(answer["score"]), levels=len(pred))
+                threshold_level = (
+                    hard_level_from_thresholds(float(answer["score"]), score_thresholds)
+                    if score_thresholds
+                    else nearest_level
+                )
                 argmax_level = int(np.argmax(pred))
+                predicted_level = argmax_level
                 gold_level = int(gold["label"])
                 correct = float(predicted_level == gold_level)
                 hard_error = abs(predicted_level - gold_level)
                 score_true_levels.append(gold_level)
                 score_pred_levels.append(predicted_level)
                 score_argmax_levels.append(argmax_level)
+                score_nearest_levels.append(nearest_level)
+                score_threshold_levels.append(threshold_level)
                 score_hard_errors.append(float(hard_error))
                 score_within_one.append(float(hard_error <= 1))
                 score_expected_errors.append(abs(float(answer["score"]) - float(gold["score"])))
@@ -168,7 +185,22 @@ def main() -> None:
         "score_rps": float(np.mean(score_rps_values)) if score_rps_values else None,
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
-        "score_decoder": "nearest_expected_level",
+        "score_decoder": "argmax",
+        "score_thresholds": score_thresholds,
+        "score_nearest_accuracy": (
+            sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_nearest_levels))
+            / max(1, len(score_true_levels))
+        ),
+        "score_nearest_qwk": quadratic_weighted_kappa(score_true_levels, score_nearest_levels, levels=5)
+        if score_true_levels
+        else None,
+        "score_threshold_accuracy": (
+            sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_threshold_levels))
+            / max(1, len(score_true_levels))
+        ),
+        "score_threshold_qwk": quadratic_weighted_kappa(score_true_levels, score_threshold_levels, levels=5)
+        if score_true_levels
+        else None,
         "score_argmax_accuracy": (
             sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_argmax_levels))
             / max(1, len(score_true_levels))
