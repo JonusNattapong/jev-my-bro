@@ -5,23 +5,13 @@ import argparse
 import laya
 import uvicorn
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
 
-from jevbro.questions import default_questions, detect_question_language
-
-
-class PredictRequest(BaseModel):
-    state: str | dict | list
-    questions: dict[str, dict]
-
-
-class DecideRequest(BaseModel):
-    context: str = Field(min_length=1, max_length=20000)
-    language: str | None = None
+from jevbro.router import DecideRequest, PredictRequest, create_router, decision_response
 
 
 def create_app(agent) -> FastAPI:
     app = FastAPI(title="jev-my-bro", version="0.2.0")
+    app.include_router(create_router(agent))
 
     @app.get("/health")
     def health() -> dict:
@@ -33,20 +23,7 @@ def create_app(agent) -> FastAPI:
 
     @app.post("/v1/decide")
     def decide(request: DecideRequest) -> dict:
-        language = request.language or detect_question_language(request.context)
-        questions = default_questions(language)
-        result = agent.predict({"request": request.context}, questions)
-        answers = result["answers"]
-        action = answers["action"]
-        return {
-            "decision": action["choice"],
-            "confidence": action["confidence"],
-            "needs_review": answers["needs_review"]["noul"],
-            "prohibited": answers["prohibited"]["noul"],
-            "risk": answers["risk"]["score"],
-            "answers": answers,
-            "usage": result.get("usage", {}),
-        }
+        return decision_response(agent, request)
 
     return app
 

@@ -23,6 +23,15 @@ func main() {
 	mux.HandleFunc("/v1/predict", func(w http.ResponseWriter, r *http.Request) {
 		proxy(client, upstream+"/v1/predict", w, r)
 	})
+	mux.HandleFunc("/v1/jev-my-bro/health", func(w http.ResponseWriter, r *http.Request) {
+		proxy(client, upstream+"/v1/jev-my-bro/health", w, r)
+	})
+	mux.HandleFunc("/v1/jev-my-bro/decide", func(w http.ResponseWriter, r *http.Request) {
+		proxy(client, upstream+"/v1/jev-my-bro/decide", w, r)
+	})
+	mux.HandleFunc("/v1/jev-my-bro/predict", func(w http.ResponseWriter, r *http.Request) {
+		proxy(client, upstream+"/v1/jev-my-bro/predict", w, r)
+	})
 
 	log.Printf("jev-my-bro gateway listening on %s -> %s", listen, upstream)
 	server := &http.Server{

@@ -330,8 +330,33 @@ For arbitrary Laya-compatible questions, use `POST /v1/predict`:
 }
 ```
 
-The optional Go gateway forwards `/health`, `/v1/decide`, and `/v1/predict`.
-Its defaults are gateway `localhost:8090` and Python service `localhost:8080`.
+The optional Go gateway forwards `/health`, `/v1/decide`, `/v1/predict`, and
+the namespaced integration routes under `/v1/jev-my-bro/`. Its defaults are
+gateway `localhost:8090` and Python service `localhost:8080`.
+
+## Integration API
+
+For new integrations, use the namespaced router so the product boundary is
+explicit and future API versions can be added without colliding with another
+service:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/jev-my-bro/decide \
+  -H "content-type: application/json" \
+  -d '{"context":"Deploy the payment service to production"}'
+```
+
+The router also exposes:
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/jev-my-bro/health` | Integration health check |
+| `POST` | `/v1/jev-my-bro/decide` | Governance decision using the default four questions |
+| `POST` | `/v1/jev-my-bro/predict` | Custom typed questions and state |
+
+The old `/health`, `/v1/decide`, and `/v1/predict` routes remain available for
+backward compatibility. The namespaced routes return `engine: jev-my-bro` so a
+caller can verify that it reached the intended service.
 
 ## Verification
 
