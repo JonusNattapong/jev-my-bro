@@ -1,3 +1,16 @@
+---
+library_name: laya
+language:
+  - en
+  - th
+tags:
+  - decision-model
+  - system-one
+  - agent-governance
+  - tool-governance
+  - reinforcement-learning
+---
+
 # jev-my-bro
 
 `jev-my-bro` is a self-hosted, typed decision model for agent and tool governance.
