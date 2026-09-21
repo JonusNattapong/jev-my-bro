@@ -1,0 +1,13 @@
+torch>=2.4
+transformers>=4.45
+datasets>=3.0
+accelerate>=1.0
+scikit-learn>=1.5
+sentencepiece>=0.2
+numpy>=1.26,<3
+onnx>=1.17
+onnxscript>=0.2
+onnxruntime>=1.20
+fastapi>=0.115
+uvicorn>=0.32
+pytest>=8.3
