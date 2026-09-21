@@ -30,4 +30,5 @@ def collate_items(items: list[dict], pad_id: int) -> dict:
         "target": target,
         "qtype": torch.tensor([item["qtype"] for item in items], dtype=torch.long),
         "label": torch.tensor([item["label"] for item in items], dtype=torch.long),
+        "language": torch.tensor([0 if item["language"] == "en" else 1 for item in items], dtype=torch.long),
     }

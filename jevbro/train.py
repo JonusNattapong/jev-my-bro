@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 import torch
-from laya.common import proper_reward
+from laya.common import QTYPES, proper_reward
 
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
@@ -28,6 +28,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--grad-accum", type=int, default=8)
     parser.add_argument("--group-size", type=int, default=4)
     parser.add_argument("--checkpoint-each-epoch", action="store_true")
+    parser.add_argument("--english-weight", type=float, default=1.5)
+    parser.add_argument("--choice-weight", type=float, default=1.5)
+    parser.add_argument("--score-weight", type=float, default=2.0)
     parser.add_argument("--encoder-lr", type=float, default=2.5e-5)
     parser.add_argument("--head-lr", type=float, default=1.0e-4)
     parser.add_argument("--sigma-start", type=float, default=0.4)
@@ -136,6 +139,7 @@ def main() -> None:
             marker_mask = batch["marker_mask"].to(device)
             qtype = batch["qtype"].to(device)
             target = batch["target"].to(device)
+            language = batch["language"].to(device)
 
             with torch.autocast("cuda", dtype=torch.float16):
                 logits, action_logits = model(
@@ -169,15 +173,33 @@ def main() -> None:
                 advantage = reward - reward.mean(0, keepdim=True)
                 advantage = advantage / (advantage.std() + 1e-6)
 
+            item_weight = torch.ones_like(qtype, dtype=torch.float32)
+            item_weight = item_weight * torch.where(
+                language == 0,
+                torch.tensor(args.english_weight, device=device),
+                torch.tensor(1.0, device=device),
+            )
+            item_weight = item_weight * torch.where(
+                qtype == QTYPES["choice"],
+                torch.tensor(args.choice_weight, device=device),
+                torch.tensor(1.0, device=device),
+            )
+            item_weight = item_weight * torch.where(
+                qtype == QTYPES["score"],
+                torch.tensor(args.score_weight, device=device),
+                torch.tensor(1.0, device=device),
+            )
+            item_weight = item_weight / item_weight.mean().clamp_min(1e-6)
+
             log_policy = -(
                 ((sampled_logits - logits.unsqueeze(0)) ** 2) * marker_mask
             ).sum(-1) / (2 * sigma**2)
-            loss_rl = -(advantage * log_policy).mean()
+            loss_rl = -(advantage * log_policy).mean(0)
             loss_ce = -(
                 target
                 * torch.log_softmax(logits.masked_fill(~marker_mask, -1e4), -1)
-            ).sum(-1).mean()
-            loss = (loss_rl + loss_ce) / args.grad_accum + 0.0 * action_logits.sum()
+            ).sum(-1)
+            loss = ((loss_rl + loss_ce) * item_weight).mean() / args.grad_accum + 0.0 * action_logits.sum()
 
             scaler.scale(loss).backward()
             batches += 1
