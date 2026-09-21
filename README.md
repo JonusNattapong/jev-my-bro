@@ -84,7 +84,7 @@ Train, validation, calibration, and test remain independent.
 
 ## Dataset
 
-The current source of truth contains **1,008 cases / 4,032 typed decisions**:
+The original bootstrap source contains **1,008 cases / 4,032 typed decisions**:
 
 | Split | Cases | Typed decisions | English | Thai |
 | --- | ---: | ---: | ---: | ---: |
@@ -110,6 +110,22 @@ Validate the current data before training:
 ```bash
 python scripts/validate_dataset.py
 ```
+
+The provenance-aware expansion is in `data/hf_expanded/` and contains **8,508
+cases / 34,032 typed decisions**: the original 1,008 cases plus 7,500 selected
+and transformed cases from MASSIVE Thai, BANKING77, and Hermes function calling.
+Each imported case records its source dataset, license, attribution, source
+record, scenario family, and variant type. The full audit is reproducible with:
+
+```bash
+python scripts/validate_dataset.py --root data/hf_expanded
+python scripts/audit_hf_dataset.py --root data/hf_expanded
+```
+
+The audit currently reports zero structural/provenance/variant flags. Imported
+labels are marked `rule_reviewed`, not human-reviewed; the dataset must not be
+treated as a final production authorization policy until reviewers inspect the
+source/domain/variant slices.
 
 ## Evaluation: what has actually run
 
@@ -227,7 +243,7 @@ comparable.
 | Types | `choice`, `noul`, `score` | `choice`, `noul`, `score` |
 | Choice space | Project action labels: execute / ask_user / reject | Up to 255 named options, including “none of the above” slot |
 | Score space | Fixed five-level operational risk target | 2–10 ordered levels; probability-weighted fractional score |
-| Training data | 1,008 reviewed project cases today; 4,032 decisions | About 5B continued-pretraining Thai tokens; broader public evaluation sets |
+| Training data | 8,508 cases / 34,032 decisions; 7,500 HF cases are rule-reviewed pending human audit | About 5B continued-pretraining Thai tokens; broader public evaluation sets |
 | Project adaptation | Explicit governance domains and approval semantics | General-purpose Thai/English decision behavior |
 | Calibration | Held-out temperature per primitive; test ECE 0.0514 | Published confidence/ECE tables and abstain signal |
 | License | Project code/model usage follows repository and upstream terms; Laya is Apache-2.0 | Apache-2.0 |
@@ -276,18 +292,18 @@ equivalent commands are:
 pip install -r requirements.txt
 
 python -m jevbro.train \
-  --train data/train.jsonl \
-  --validation data/validation.jsonl \
+  --train data/hf_expanded/train.jsonl \
+  --validation data/hf_expanded/validation.jsonl \
   --base-model convaiinnovations/laya-multilingual \
   --output artifacts/laya-model
 
 python -m jevbro.calibrate \
   --model artifacts/laya-model \
-  --data data/calibration.jsonl
+  --data data/hf_expanded/calibration.jsonl
 
 python -m jevbro.evaluate \
   --model artifacts/laya-model \
-  --data data/test.jsonl
+  --data data/hf_expanded/test.jsonl
 ```
 
 Never tune hyperparameters against the test split. Do not commit model weights,
@@ -380,6 +396,5 @@ check the individual upstream licenses before redistributing derived artifacts.
 
 v0.2 establishes the jev-my-bro training and serving path on the Laya runtime, a real Colab GPU
 checkpoint, error-analysis tooling, and CPU/GPU inference measurements. The
-next model-quality milestone is the reviewed 5k–10k-case dataset expansion and
-a shared evaluation set for a direct comparison against other typed decision
-models.
+next model-quality milestone is human review of the 8,508-case provenance-aware
+dataset, followed by a new Colab training/calibration/test run.
