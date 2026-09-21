@@ -25,7 +25,7 @@ def create_app(agent) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict:
-        return {"ok": True, "engine": "laya"}
+        return {"ok": True, "engine": "jev-my-bro", "runtime": "laya"}
 
     @app.post("/v1/predict")
     def predict(request: PredictRequest) -> dict:

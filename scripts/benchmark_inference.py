@@ -16,7 +16,7 @@ from jevbro.schema import read_cases
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark Laya inference latency and throughput")
+    parser = argparse.ArgumentParser(description="Benchmark jev-my-bro inference latency and throughput")
     parser.add_argument("--model", default="artifacts/laya-model")
     parser.add_argument("--data", default="data/test.jsonl")
     parser.add_argument("--device", default="cpu")
@@ -123,7 +123,7 @@ def main() -> None:
             "first_request_ms": first_request_ms,
             "memory_after_first_request": memory_snapshot(args.device),
         },
-        "note": "Laya Agent.predict has no exposed tensor-batch API here; batch sizes measure grouped sequential requests.",
+        "note": "The jev-my-bro Laya runtime exposes no tensor-batch API here; batch sizes measure grouped sequential requests.",
         "results": results,
     }
     output = Path(args.report)

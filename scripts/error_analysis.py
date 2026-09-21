@@ -17,7 +17,7 @@ from jevbro.schema import read_cases
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Produce per-decision Laya error analysis")
+    parser = argparse.ArgumentParser(description="Produce per-decision jev-my-bro error analysis")
     parser.add_argument("--model", default="artifacts/laya-model")
     parser.add_argument("--data", default="data/test.jsonl")
     parser.add_argument("--device")

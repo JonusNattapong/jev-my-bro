@@ -1,5 +1,5 @@
 ---
-library_name: laya
+model_name: jev-my-bro-v0.2
 language:
   - en
   - th
@@ -18,7 +18,7 @@ It answers structured questions about an operation—such as whether to execute,
 ask for approval, reject, or escalate—without generating prose as its primary
 output.
 
-The active release is **jev-my-bro v0.2 Laya**. It is a domain-specialized
+The active release is **jev-my-bro v0.2**. It is a domain-specialized
 decision model for English and Thai operational requests.
 
 > This project is a research and engineering artifact. The checked-in dataset is
@@ -160,7 +160,7 @@ ignored by Git because model outputs and reports are generated artifacts.
 
 ## Inference benchmark
 
-The benchmark uses the real Laya checkpoint and test JSONL. It measures cold
+The benchmark uses the real jev-my-bro checkpoint and test JSONL. It measures cold
 start, first request, p50, p95, throughput, process memory, and CUDA memory for
 batch sizes 1, 4, and 16.
 
@@ -219,7 +219,7 @@ The comparison below uses the OpenThai documentation and model card published
 by iApp/OpenThai. It is not a claim that the two benchmark numbers are directly
 comparable.
 
-| Dimension | jev-my-bro v0.2 Laya | OpenThai-SystemOne v0.1 |
+| Dimension | jev-my-bro v0.2 | OpenThai-SystemOne v0.1 |
 | --- | --- | --- |
 | Primary purpose | Agent/tool governance and authorization-adjacent routing | General typed decision API: routing, moderation, relevance, UI choice, scoring |
 | Architecture | Laya 0.3.4 multilingual base with typed head | Qwen3.5 text tower 0.8B, continued pretraining on about 5B Thai tokens, 256-way slot head |
@@ -353,7 +353,7 @@ check the individual upstream licenses before redistributing derived artifacts.
 
 ## Status
 
-v0.2 establishes the Laya-native training and serving path, a real Colab GPU
+v0.2 establishes the jev-my-bro training and serving path on the Laya runtime, a real Colab GPU
 checkpoint, error-analysis tooling, and CPU/GPU inference measurements. The
 next model-quality milestone is the reviewed 5k–10k-case dataset expansion and
 a shared evaluation set for a direct comparison against other typed decision
