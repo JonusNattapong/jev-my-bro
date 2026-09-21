@@ -12,6 +12,8 @@ def test_all_splits_are_valid_and_balanced() -> None:
         actions = summary["actions"]
         assert actions["execute"] == actions["ask_user"] == actions["reject"]
         assert all(set(case["questions"]) == EXPECTED_IDS for case in cases)
+        risk_levels = {str(case["gold"]["risk"]["label"]) for case in cases}
+        assert risk_levels == {"0", "1", "2", "3", "4"}
 
 
 def test_splits_do_not_share_requests() -> None:

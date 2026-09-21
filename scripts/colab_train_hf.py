@@ -28,12 +28,14 @@ if not ROOT.exists():
     subprocess.run(["git", "clone", "--depth", "1", "https://github.com/JonusNattapong/jev-my-bro.git", str(ROOT)], check=True)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "laya==0.3.4", "datasets>=3.0"], check=True)
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
+data_root = ROOT / os.environ.get("TRAIN_DATA_ROOT", "data/hf_expanded")
+output_name = os.environ.get("TRAIN_OUTPUT_NAME", "jev-my-bro-model")
 smoke_cases = int(os.environ["SMOKE_CASES"]) if os.environ.get("SMOKE_CASES") else None
 epochs = int(os.environ.get("TRAIN_EPOCHS", "4"))
-train_data = maybe_limit_split(DATA / "train.jsonl", smoke_cases)
-validation_data = maybe_limit_split(DATA / "validation.jsonl", smoke_cases)
-calibration_data = maybe_limit_split(DATA / "calibration.jsonl", smoke_cases)
-test_data = maybe_limit_split(DATA / "test.jsonl", smoke_cases)
+train_data = maybe_limit_split(data_root / "train.jsonl", smoke_cases)
+validation_data = maybe_limit_split(data_root / "validation.jsonl", smoke_cases)
+calibration_data = maybe_limit_split(data_root / "calibration.jsonl", smoke_cases)
+test_data = maybe_limit_split(data_root / "test.jsonl", smoke_cases)
 checkpoint_args = ["--checkpoint-each-epoch"] if os.environ.get("CHECKPOINT_EACH_EPOCH", "1") == "1" else []
 
 subprocess.run(
@@ -48,7 +50,7 @@ subprocess.run(
         "--base-model",
         "convaiinnovations/laya-multilingual",
         "--output",
-        str(ARTIFACTS / "jev-my-bro-model"),
+        str(ARTIFACTS / output_name),
         "--epochs",
         str(epochs),
         "--micro-batch",
@@ -65,6 +67,12 @@ subprocess.run(
         os.environ.get("CHOICE_WEIGHT", "1.5"),
         "--score-weight",
         os.environ.get("SCORE_WEIGHT", "2.0"),
+        "--score-ce-weight",
+        os.environ.get("SCORE_CE_WEIGHT", "0.5"),
+        "--score-rps-weight",
+        os.environ.get("SCORE_RPS_WEIGHT", "1.0"),
+        "--score-class-balance-beta",
+        os.environ.get("SCORE_CLASS_BALANCE_BETA", "0.0"),
     ] + checkpoint_args,
     cwd=ROOT,
     check=True,
@@ -75,7 +83,7 @@ subprocess.run(
         "-m",
         "jevbro.calibrate",
         "--model",
-        str(ARTIFACTS / "jev-my-bro-model"),
+        str(ARTIFACTS / output_name),
         "--data",
         str(calibration_data),
         "--report",
@@ -90,7 +98,7 @@ subprocess.run(
         "-m",
         "jevbro.evaluate",
         "--model",
-        str(ARTIFACTS / "jev-my-bro-model"),
+        str(ARTIFACTS / output_name),
         "--data",
         str(test_data),
         "--device",

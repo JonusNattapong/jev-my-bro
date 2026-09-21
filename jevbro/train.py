@@ -13,6 +13,7 @@ from laya.common import QTYPES, proper_reward
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
 from jevbro.data import load_items
+from jevbro.ordinal import effective_number_weights, ranked_probability_loss
 
 DEFAULT_BASE = "convaiinnovations/laya-multilingual"
 
@@ -31,6 +32,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--english-weight", type=float, default=1.5)
     parser.add_argument("--choice-weight", type=float, default=1.5)
     parser.add_argument("--score-weight", type=float, default=2.0)
+    parser.add_argument("--score-ce-weight", type=float, default=0.5)
+    parser.add_argument("--score-rps-weight", type=float, default=1.0)
+    parser.add_argument("--score-class-balance-beta", type=float, default=0.0)
     parser.add_argument("--encoder-lr", type=float, default=2.5e-5)
     parser.add_argument("--head-lr", type=float, default=1.0e-4)
     parser.add_argument("--sigma-start", type=float, default=0.4)
@@ -52,6 +56,11 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
     correct = 0
     total = 0
     nll_sum = 0.0
+    score_n = 0
+    score_correct = 0
+    score_hard_error = 0.0
+    score_expected_error = 0.0
+    score_rps_sum = 0.0
     for start in range(0, len(items), batch_size):
         batch = collate_items(items[start : start + batch_size], tokenizer.pad_token_id)
         input_ids = batch["input_ids"].to(device)
@@ -64,11 +73,40 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
         logits, _ = model(input_ids, attention_mask, marker_pos, marker_mask, qtype)
         logits = logits.float().masked_fill(~marker_mask, -1e4)
         log_probs = torch.log_softmax(logits, -1)
+        probs = torch.softmax(logits, -1)
         nll_sum += float((-(target * log_probs).sum(-1)).sum().item())
         correct += int((logits.argmax(-1) == labels).sum().item())
+        is_score = qtype == QTYPES["score"]
+        if is_score.any():
+            selected_probs = probs[is_score]
+            selected_target = target[is_score]
+            selected_mask = marker_mask[is_score]
+            selected_labels = labels[is_score]
+            pred_levels = selected_probs.argmax(-1)
+            level_axis = torch.arange(selected_probs.shape[-1], device=device, dtype=selected_probs.dtype)
+            pred_expected = (selected_probs * level_axis).sum(-1)
+            target_expected = (selected_target * level_axis).sum(-1)
+            count = int(is_score.sum().item())
+            score_n += count
+            score_correct += int((pred_levels == selected_labels).sum().item())
+            score_hard_error += float((pred_levels - selected_labels).abs().float().sum().item())
+            score_expected_error += float((pred_expected - target_expected).abs().sum().item())
+            score_rps_sum += float(
+                ranked_probability_loss(selected_probs, selected_target, selected_mask).sum().item()
+            )
         total += len(labels)
     model.train()
-    return {"accuracy": correct / max(1, total), "soft_nll": nll_sum / max(1, total)}
+    return {
+        "accuracy": correct / max(1, total),
+        "soft_nll": nll_sum / max(1, total),
+        "score": {
+            "n": score_n,
+            "accuracy": score_correct / max(1, score_n),
+            "hard_mae": score_hard_error / max(1, score_n),
+            "expected_mae": score_expected_error / max(1, score_n),
+            "rps": score_rps_sum / max(1, score_n),
+        },
+    }
 
 
 def main() -> None:
@@ -100,6 +138,13 @@ def main() -> None:
     validation_items = load_items(tokenizer, cfg, args.validation)
     print(f"[train] base={resolved_base}", flush=True)
     print(f"[train] sequences={len(train_items)} validation={len(validation_items)}", flush=True)
+    score_labels = [item["label"] for item in train_items if item["qtype"] == QTYPES["score"]]
+    score_level_weights = torch.tensor(
+        effective_number_weights(score_labels, args.score_class_balance_beta, levels=5),
+        device=device,
+        dtype=torch.float32,
+    )
+    print(f"[train] score_level_weights={score_level_weights.tolist()}", flush=True)
 
     encoder_params = [param for name, param in model.named_parameters() if name.startswith("encoder.")]
     head_params = [param for name, param in model.named_parameters() if not name.startswith("encoder.")]
@@ -139,6 +184,7 @@ def main() -> None:
             marker_mask = batch["marker_mask"].to(device)
             qtype = batch["qtype"].to(device)
             target = batch["target"].to(device)
+            labels = batch["label"].to(device)
             language = batch["language"].to(device)
 
             with torch.autocast("cuda", dtype=torch.float16):
@@ -189,6 +235,12 @@ def main() -> None:
                 torch.tensor(args.score_weight, device=device),
                 torch.tensor(1.0, device=device),
             )
+            score_balance = score_level_weights[labels.clamp(min=0, max=4)]
+            item_weight = item_weight * torch.where(
+                qtype == QTYPES["score"],
+                score_balance,
+                torch.tensor(1.0, device=device),
+            )
             item_weight = item_weight / item_weight.mean().clamp_min(1e-6)
 
             log_policy = -(
@@ -199,7 +251,12 @@ def main() -> None:
                 target
                 * torch.log_softmax(logits.masked_fill(~marker_mask, -1e4), -1)
             ).sum(-1)
-            loss = ((loss_rl + loss_ce) * item_weight).mean() / args.grad_accum + 0.0 * action_logits.sum()
+            probs = torch.softmax(logits.masked_fill(~marker_mask, -1e4), -1)
+            loss_rps = ranked_probability_loss(probs, target, marker_mask)
+            is_score = (qtype == QTYPES["score"]).float()
+            supervised = loss_ce * (1.0 - is_score + is_score * args.score_ce_weight)
+            supervised = supervised + is_score * args.score_rps_weight * loss_rps
+            loss = ((loss_rl + supervised) * item_weight).mean() / args.grad_accum + 0.0 * action_logits.sum()
 
             scaler.scale(loss).backward()
             batches += 1
@@ -248,11 +305,14 @@ def main() -> None:
             epoch_cfg["base_model"] = args.base_model
             epoch_cfg["temperature"] = [1.0, 1.0, 1.0]
             epoch_cfg["training"] = {
-                "method": "rlcd_plus_soft_cross_entropy",
+                "method": "rlcd_plus_ordinal_soft_ce_rps",
                 "epochs": epoch + 1,
                 "seed": args.seed,
                 "train_sequences": len(train_items),
                 "validation_sequences": len(validation_items),
+                "score_ce_weight": args.score_ce_weight,
+                "score_rps_weight": args.score_rps_weight,
+                "score_class_balance_beta": args.score_class_balance_beta,
             }
             save_checkpoint(model, tokenizer, epoch_cfg, f"{args.output}/epoch-{epoch + 1}")
             print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
@@ -262,11 +322,14 @@ def main() -> None:
     cfg["base_model"] = args.base_model
     cfg["temperature"] = [1.0, 1.0, 1.0]
     cfg["training"] = {
-        "method": "rlcd_plus_soft_cross_entropy",
+        "method": "rlcd_plus_ordinal_soft_ce_rps",
         "epochs": args.epochs,
         "seed": args.seed,
         "train_sequences": len(train_items),
         "validation_sequences": len(validation_items),
+        "score_ce_weight": args.score_ce_weight,
+        "score_rps_weight": args.score_rps_weight,
+        "score_class_balance_beta": args.score_class_balance_beta,
     }
     model.eval()
     save_checkpoint(model, tokenizer, cfg, args.output)

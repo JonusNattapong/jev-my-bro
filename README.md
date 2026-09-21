@@ -1,5 +1,6 @@
 ---
 model_name: jev-my-bro-v0.2
+license: apache-2.0
 language:
   - en
   - th
@@ -58,7 +59,7 @@ Laya multilingual base
 Typed decision head: choice / noul / score
         |
         v
-RLCD + soft-target cross entropy
+RLCD + ordinal soft-target cross entropy + direct RPS
         |
         v
 Independent temperature calibration
@@ -73,9 +74,10 @@ Native PyTorch inference -> FastAPI -> optional Go gateway
 | Base checkpoint | `convaiinnovations/laya-multilingual` |
 | Languages | English and Thai |
 | Decision primitives | `choice`, `noul`, `score` |
-| Training | RLCD plus soft-target cross entropy |
+| Training | RLCD plus ordinal soft-target CE and direct RPS for `score` |
 | Calibration | One held-out temperature per primitive |
 | Runtime | Native Laya/PyTorch served through FastAPI |
+| Coding-agent integration | MCP v2 over Streamable HTTP or stdio |
 | Optional integration | Go reverse proxy |
 | Legacy baseline | `baseline/deberta` |
 
@@ -98,39 +100,48 @@ Each case contains a state, four typed questions, and normalized probability
 targets. The dataset is intentionally checked in as JSONL; no unchecked dataset
 generator is part of the training path.
 
-The next expansion target is 5,000–10,000 cases. It must add semantic variety,
-not only template permutations: paraphrases, long context, conflicting context,
-explicit and revoked approval, indirect wording, Thai/English code-switching,
-code/tool-call payloads, and out-of-distribution cases. Scenario families must
-remain in one split to prevent paraphrase leakage. The acceptance rules are
-documented in [`docs/DATASET_EXPANSION_PLAN.md`](docs/DATASET_EXPANSION_PLAN.md).
+The original expansion target of 5,000–10,000 cases has been reached. The active
+provenance-aware dataset is `data/hf_expanded/` with **8,508 cases**. Its
+acceptance rules and historical expansion plan are documented in
+[`docs/DATASET_EXPANSION_PLAN.md`](docs/DATASET_EXPANSION_PLAN.md), while the
+published Dataset Card lives in [`data/hf_expanded/README.md`](data/hf_expanded/README.md).
 
-Validate the current data before training:
-
-```bash
-python scripts/validate_dataset.py
-```
-
-The provenance-aware expansion is in `data/hf_expanded/` and contains **8,508
-cases / 34,032 typed decisions**: the original 1,008 cases plus 7,500 selected
-and transformed cases from MASSIVE Thai, BANKING77, and Hermes function calling.
-Each imported case records its source dataset, license, attribution, source
-record, scenario family, and variant type. The full audit is reproducible with:
+Validate the active dataset before training:
 
 ```bash
 python scripts/validate_dataset.py --root data/hf_expanded
 python scripts/audit_hf_dataset.py --root data/hf_expanded
 ```
 
-The audit currently reports zero structural/provenance/variant flags. Imported
-labels are marked `rule_reviewed`, not human-reviewed; the dataset must not be
-treated as a final production authorization policy until reviewers inspect the
-source/domain/variant slices.
+The provenance-aware expansion is in `data/hf_expanded/` and contains **8,508
+cases / 34,032 typed decisions**: the original 1,008 cases plus 7,500 selected
+and transformed cases from MASSIVE Thai, BANKING77, and Hermes function calling.
+Each imported case records its source dataset, license, attribution, source
+record, scenario family, and variant type. The same snapshot is published at
+[`JonusNattapong/jev-my-bro-dataset`](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset).
+The full audit is reproducible with:
+
+```bash
+python scripts/validate_dataset.py --root data/hf_expanded
+python scripts/audit_hf_dataset.py --root data/hf_expanded
+```
+
+The audit currently reports **8,508 cases, 2,508 scenario families, and zero
+structural/provenance/variant flags**. Imported labels are marked `rule_reviewed`,
+not human-reviewed; the dataset must not be treated as a final production
+authorization policy until reviewers inspect the source/domain/variant slices.
+The published Dataset Card also documents source composition, split counts,
+action imbalance, per-source licenses, transformations, and known limitations.
+The ordinal-risk redesign and v4 training recipe are documented in
+[`docs/SCORE_V4.md`](docs/SCORE_V4.md).
 
 ## Evaluation: what has actually run
 
 The v0.2 checkpoint was trained on a Google Colab NVIDIA T4. These are measured
-results from the current 144-case test split, not estimates:
+results from the **older 1,008-case bootstrap dataset and its 144-case test
+split**, not from the current `data/hf_expanded/` snapshot. A fresh train,
+calibration, and test run is required before publishing metrics for the 8,508-case
+dataset:
 
 | Metric | Result |
 | --- | ---: |
@@ -350,6 +361,52 @@ The optional Go gateway forwards `/health`, `/v1/decide`, `/v1/predict`, and
 the namespaced integration routes under `/v1/jev-my-bro/`. Its defaults are
 gateway `localhost:8090` and Python service `localhost:8080`.
 
+### MCP for Codex, Claude Code, and OpenCode
+
+Install the editable CLI once, then run one shared MCP process so the Laya
+checkpoint is loaded once:
+
+```powershell
+.\\.venv\\Scripts\\python.exe -m pip install -e . --no-deps
+jev serve --model artifacts/laya-model --host 127.0.0.1 --port 8787
+```
+
+Clients connect to `http://127.0.0.1:8787/mcp`. For non-trivial coding tasks,
+agents use `jev_task_start` -> optional `jev_decide(task_id=...)` calls ->
+normal implementation/testing -> `jev_task_complete` or `jev_task_fail`.
+`jev_task_status`, `jev_task_list`, and `jev_feedback_stats` provide
+inspection/evaluation. The older `jev_feedback_*` and `jev_record_outcome`
+APIs remain available for compatibility.
+
+See [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) for Codex, Claude Code,
+and OpenCode setup.
+
+### Real-use feedback for v0.3
+
+Jev stores task sessions, attached decisions, and final outcomes in
+`artifacts/feedback/jev_feedback.sqlite3`. The same lifecycle is available from
+MCP and the `jev` CLI:
+
+```powershell
+jev health
+jev task start "Fix regression" --agent codex --repo jev-my-bro
+jev task status jevtask-...
+jev task complete jevtask-... --choice minimal_patch --tests-passed --test-command "pytest -q" --test-exit-code 0
+jev task fail jevtask-... --reason "dependency unavailable"
+jev task list --status completed
+jev stats
+jev eval
+jev export
+```
+
+Without an activated venv, `.\\jev.cmd ...` runs the same CLI. The older
+`.\\jev-feedback.cmd` wrapper remains for compatibility.
+
+The default export is `artifacts/feedback/v0.3-feedback.jsonl`, one row per
+feedback session with nested Jev decisions. Treat it as reviewable evidence, not
+gold labels to append directly to the training split. See
+[`docs/FEEDBACK_LOOP.md`](docs/FEEDBACK_LOOP.md).
+
 ## Integration API
 
 For new integrations, use the namespaced router so the product boundary is
@@ -377,7 +434,8 @@ caller can verify that it reached the intended service.
 ## Verification
 
 ```bash
-python scripts/validate_dataset.py
+python scripts/validate_dataset.py --root data/hf_expanded
+python scripts/audit_hf_dataset.py --root data/hf_expanded
 python -m compileall -q jevbro scripts tests
 pytest -q
 cd server/go && go test ./...
@@ -388,9 +446,17 @@ GPU-capable environment such as Google Colab.
 
 ## Upstream and license
 
-Laya is an Apache-2.0 dependency. See [`THIRD_PARTY.md`](THIRD_PARTY.md).
-The repository's code and data terms are described in the repository metadata;
-check the individual upstream licenses before redistributing derived artifacts.
+jev-my-bro project code and project-authored bootstrap data are licensed under
+**Apache License 2.0**; see [`LICENSE`](LICENSE). Laya is also an Apache-2.0
+dependency; see [`THIRD_PARTY.md`](THIRD_PARTY.md).
+
+The active dataset is mixed-source: MASSIVE Thai rows record CC BY 4.0,
+BANKING77 rows record MIT, while Hermes function-calling rows and the 1,008
+project-authored bootstrap rows are Apache-2.0. The repository Apache license
+does not override upstream dataset terms. See [`DATA_LICENSE.md`](DATA_LICENSE.md),
+[`data/hf_expanded/README.md`](data/hf_expanded/README.md), and
+[`data/hf_expanded/SOURCE_MANIFEST.json`](data/hf_expanded/SOURCE_MANIFEST.json)
+before redistributing derived artifacts.
 
 ## Status
 

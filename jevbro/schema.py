@@ -91,6 +91,9 @@ def validate_case(case: dict, source: str = "case") -> None:
             _assert_distribution(probabilities, keys, f"{source}/{qid}")
             if str(answer.get("label")) not in keys:
                 raise DatasetError(f"{source}/{qid}: score label out of range")
+            expected_score = sum(index * float(probabilities[str(index)]) for index in range(len(criteria)))
+            if abs(float(answer.get("score", expected_score)) - expected_score) > 1e-4:
+                raise DatasetError(f"{source}/{qid}: score target disagrees with probabilities")
 
 
 def summarize(cases: list[dict]) -> dict:
