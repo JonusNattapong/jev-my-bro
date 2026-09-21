@@ -7,6 +7,7 @@ venv/
 .pytest_cache/
 .ruff_cache/
 artifacts/
+data/expanded/
 checkpoints/
 runs/
 wandb/

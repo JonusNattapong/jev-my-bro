@@ -1,0 +1,33 @@
+{
+  "sources": {
+    "massive_th": {
+      "dataset": "AmazonScience/massive",
+      "config": "th-TH",
+      "license": "cc-by-4.0",
+      "attribution": "FitzGerald et al., MASSIVE (2022); Amazon Science",
+      "language": "th"
+    },
+    "banking77_en": {
+      "dataset": "mteb/banking77",
+      "config": null,
+      "license": "mit",
+      "attribution": "Casanueva et al., BANKING77 (2020); MTEB mirror",
+      "language": "en"
+    },
+    "hermes_tools_en": {
+      "dataset": "NousResearch/hermes-function-calling-v1",
+      "config": "func_calling_singleturn",
+      "license": "apache-2.0",
+      "attribution": "Nous Research Hermes function-calling dataset",
+      "language": "en"
+    }
+  },
+  "label_status": "rule_reviewed",
+  "variants": [
+    "base",
+    "approval_context",
+    "revoked_approval",
+    "conflict_context",
+    "ood_mixed_indirect"
+  ]
+}

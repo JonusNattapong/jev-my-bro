@@ -2,6 +2,7 @@ laya==0.3.4
 torch>=2.4
 transformers>=4.48
 huggingface_hub>=0.28
+datasets>=3.0
 safetensors>=0.4
 numpy>=1.26,<3
 scipy>=1.13
