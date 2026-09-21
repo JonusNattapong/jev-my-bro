@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--micro-batch", type=int, default=4)
     parser.add_argument("--grad-accum", type=int, default=8)
     parser.add_argument("--group-size", type=int, default=4)
+    parser.add_argument("--checkpoint-each-epoch", action="store_true")
     parser.add_argument("--encoder-lr", type=float, default=2.5e-5)
     parser.add_argument("--head-lr", type=float, default=1.0e-4)
     parser.add_argument("--sigma-start", type=float, default=0.4)
@@ -94,8 +95,8 @@ def main() -> None:
 
     train_items = load_items(tokenizer, cfg, args.train)
     validation_items = load_items(tokenizer, cfg, args.validation)
-    print(f"[train] base={resolved_base}")
-    print(f"[train] sequences={len(train_items)} validation={len(validation_items)}")
+    print(f"[train] base={resolved_base}", flush=True)
+    print(f"[train] sequences={len(train_items)} validation={len(validation_items)}", flush=True)
 
     encoder_params = [param for name, param in model.named_parameters() if name.startswith("encoder.")]
     head_params = [param for name, param in model.named_parameters() if not name.startswith("encoder.")]
@@ -192,6 +193,15 @@ def main() -> None:
             running_loss += float(loss.item() * args.grad_accum)
             running_reward += float(reward.mean().item())
 
+            if batches == 1 or batches % 25 == 0 or start + args.micro_batch >= len(train_items):
+                print(
+                    f"[train] epoch={epoch + 1}/{args.epochs} "
+                    f"batch={batches}/{math.ceil(len(train_items) / args.micro_batch)} "
+                    f"loss={running_loss / batches:.4f} "
+                    f"elapsed={time.time() - started:.1f}s",
+                    flush=True,
+                )
+
         metrics = validation_metrics(model, validation_items, tokenizer, device)
         print(
             json.dumps(
@@ -205,8 +215,25 @@ def main() -> None:
                     "elapsed_seconds": round(time.time() - started, 1),
                 },
                 indent=2,
-            )
+            ),
+            flush=True,
         )
+
+        if args.checkpoint_each_epoch:
+            epoch_cfg = dict(cfg)
+            epoch_cfg["fine_tuned"] = True
+            epoch_cfg["model_name"] = "jev-my-bro"
+            epoch_cfg["base_model"] = args.base_model
+            epoch_cfg["temperature"] = [1.0, 1.0, 1.0]
+            epoch_cfg["training"] = {
+                "method": "rlcd_plus_soft_cross_entropy",
+                "epochs": epoch + 1,
+                "seed": args.seed,
+                "train_sequences": len(train_items),
+                "validation_sequences": len(validation_items),
+            }
+            save_checkpoint(model, tokenizer, epoch_cfg, f"{args.output}/epoch-{epoch + 1}")
+            print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
 
     cfg["fine_tuned"] = True
     cfg["model_name"] = "jev-my-bro"
@@ -221,7 +248,7 @@ def main() -> None:
     }
     model.eval()
     save_checkpoint(model, tokenizer, cfg, args.output)
-    print(f"[train] saved checkpoint to {args.output}")
+    print(f"[train] saved checkpoint to {args.output}", flush=True)
 
 
 if __name__ == "__main__":

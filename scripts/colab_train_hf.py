@@ -34,6 +34,7 @@ train_data = maybe_limit_split(DATA / "train.jsonl", smoke_cases)
 validation_data = maybe_limit_split(DATA / "validation.jsonl", smoke_cases)
 calibration_data = maybe_limit_split(DATA / "calibration.jsonl", smoke_cases)
 test_data = maybe_limit_split(DATA / "test.jsonl", smoke_cases)
+checkpoint_args = ["--checkpoint-each-epoch"] if os.environ.get("CHECKPOINT_EACH_EPOCH", "1") == "1" else []
 
 subprocess.run(
     [
@@ -51,14 +52,14 @@ subprocess.run(
         "--epochs",
         str(epochs),
         "--micro-batch",
-        "4",
+        os.environ.get("TRAIN_MICRO_BATCH", "4"),
         "--grad-accum",
-        "8",
+        os.environ.get("TRAIN_GRAD_ACCUM", "8"),
         "--group-size",
         "4",
         "--seed",
         "42",
-    ],
+    ] + checkpoint_args,
     cwd=ROOT,
     check=True,
 )
