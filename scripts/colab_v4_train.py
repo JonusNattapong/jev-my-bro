@@ -16,7 +16,7 @@ if not os.path.exists(ROOT):
 os.environ.update({
     "TRAIN_DATA_ROOT": "data",
     "TRAIN_OUTPUT_NAME": "jev-my-bro-v4",
-    "TRAIN_EPOCHS": "4",
+    "TRAIN_EPOCHS": "1",
     "TRAIN_MICRO_BATCH": "8",
     "TRAIN_GRAD_ACCUM": "4",
     "CHECKPOINT_EACH_EPOCH": "1",
