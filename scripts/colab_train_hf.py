@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 
@@ -11,9 +12,27 @@ ROOT = Path("/content/jev-my-bro")
 ARTIFACTS = Path("/content/jev-artifacts")
 DATA = ROOT / "data" / "hf_expanded"
 
+
+def maybe_limit_split(path: Path, limit: int | None) -> Path:
+    """Create a deterministic small split for Colab smoke tests."""
+    if limit is None:
+        return path
+    smoke_dir = ARTIFACTS / "smoke-data"
+    smoke_dir.mkdir(parents=True, exist_ok=True)
+    output = smoke_dir / path.name
+    lines = path.read_text(encoding="utf-8").splitlines()
+    output.write_text("\n".join(lines[:limit]) + "\n", encoding="utf-8")
+    return output
+
 subprocess.run(["git", "clone", "--depth", "1", "https://github.com/JonusNattapong/jev-my-bro.git", str(ROOT)], check=True)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "laya==0.3.4", "datasets>=3.0"], check=True)
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
+smoke_cases = int(os.environ["SMOKE_CASES"]) if os.environ.get("SMOKE_CASES") else None
+epochs = int(os.environ.get("TRAIN_EPOCHS", "4"))
+train_data = maybe_limit_split(DATA / "train.jsonl", smoke_cases)
+validation_data = maybe_limit_split(DATA / "validation.jsonl", smoke_cases)
+calibration_data = maybe_limit_split(DATA / "calibration.jsonl", smoke_cases)
+test_data = maybe_limit_split(DATA / "test.jsonl", smoke_cases)
 
 subprocess.run(
     [
@@ -21,15 +40,15 @@ subprocess.run(
         "-m",
         "jevbro.train",
         "--train",
-        str(DATA / "train.jsonl"),
+        str(train_data),
         "--validation",
-        str(DATA / "validation.jsonl"),
+        str(validation_data),
         "--base-model",
         "convaiinnovations/laya-multilingual",
         "--output",
         str(ARTIFACTS / "jev-my-bro-model"),
         "--epochs",
-        "4",
+        str(epochs),
         "--micro-batch",
         "4",
         "--grad-accum",
@@ -50,7 +69,7 @@ subprocess.run(
         "--model",
         str(ARTIFACTS / "jev-my-bro-model"),
         "--data",
-        str(DATA / "calibration.jsonl"),
+        str(calibration_data),
         "--report",
         str(ARTIFACTS / "calibration-report.json"),
     ],
@@ -65,7 +84,7 @@ subprocess.run(
         "--model",
         str(ARTIFACTS / "jev-my-bro-model"),
         "--data",
-        str(DATA / "test.jsonl"),
+        str(test_data),
         "--device",
         "cuda",
         "--report",
