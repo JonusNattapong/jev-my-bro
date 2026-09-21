@@ -16,13 +16,14 @@ if not os.path.exists(ROOT):
 os.environ.update({
     "TRAIN_DATA_ROOT": "data",
     "TRAIN_OUTPUT_NAME": "jev-my-bro-v4",
-    "TRAIN_EPOCHS": "1",
+    "TRAIN_EPOCHS": "2",
     "TRAIN_MICRO_BATCH": "8",
     "TRAIN_GRAD_ACCUM": "4",
     "CHECKPOINT_EACH_EPOCH": "1",
     "SCORE_CE_WEIGHT": "0.5",
     "SCORE_RPS_WEIGHT": "1.0",
     "SCORE_CLASS_BALANCE_BETA": "0.0",
+    "CHALLENGE_DATA": "data/score_v41_challenge.jsonl",
 })
 runpy = os.path.join(ROOT, "scripts", "colab_train_hf.py")
 with open(runpy, encoding="utf-8") as handle:

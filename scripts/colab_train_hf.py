@@ -30,6 +30,7 @@ subprocess.run([sys.executable, "-m", "pip", "install", "-q", "laya==0.3.4", "da
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 data_root = ROOT / os.environ.get("TRAIN_DATA_ROOT", "data/hf_expanded")
 output_name = os.environ.get("TRAIN_OUTPUT_NAME", "jev-my-bro-model")
+challenge_data = ROOT / os.environ["CHALLENGE_DATA"] if os.environ.get("CHALLENGE_DATA") else None
 smoke_cases = int(os.environ["SMOKE_CASES"]) if os.environ.get("SMOKE_CASES") else None
 epochs = int(os.environ.get("TRAIN_EPOCHS", "4"))
 train_data = maybe_limit_split(data_root / "train.jsonl", smoke_cases)
@@ -109,4 +110,22 @@ subprocess.run(
     cwd=ROOT,
     check=True,
 )
+if challenge_data is not None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "jevbro.evaluate",
+            "--model",
+            str(ARTIFACTS / output_name),
+            "--data",
+            str(challenge_data),
+            "--device",
+            "cuda",
+            "--report",
+            str(ARTIFACTS / "challenge-report.json"),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
 print(f"Artifacts written to {ARTIFACTS}")
