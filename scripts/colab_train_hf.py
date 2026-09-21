@@ -24,7 +24,8 @@ def maybe_limit_split(path: Path, limit: int | None) -> Path:
     output.write_text("\n".join(lines[:limit]) + "\n", encoding="utf-8")
     return output
 
-subprocess.run(["git", "clone", "--depth", "1", "https://github.com/JonusNattapong/jev-my-bro.git", str(ROOT)], check=True)
+if not ROOT.exists():
+    subprocess.run(["git", "clone", "--depth", "1", "https://github.com/JonusNattapong/jev-my-bro.git", str(ROOT)], check=True)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "laya==0.3.4", "datasets>=3.0"], check=True)
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 smoke_cases = int(os.environ["SMOKE_CASES"]) if os.environ.get("SMOKE_CASES") else None
