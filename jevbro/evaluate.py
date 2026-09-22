@@ -44,6 +44,15 @@ def multiclass_nll(pred: np.ndarray, target: np.ndarray) -> float:
     return float(-np.sum(target * np.log(np.clip(pred, 1e-12, 1.0))))
 
 
+def macro_recall(recall_report: dict[str, dict[str, float | int | None]]) -> float | None:
+    recalls = [
+        float(value["recall"])
+        for value in recall_report.values()
+        if value["recall"] is not None
+    ]
+    return float(np.mean(recalls)) if recalls else None
+
+
 def distribution(question: dict, answer: dict) -> np.ndarray:
     qtype = question["type"]
     if qtype == "choice":
@@ -184,11 +193,8 @@ def main() -> None:
             "support": support,
             "recall": (score_argmax_confusion[level][level] / support) if support else None,
         }
-    supported_recalls = [
-        value["recall"]
-        for value in score_argmax_recall.values()
-        if value["recall"] is not None
-    ]
+    selected_macro_recall = macro_recall(per_level_recall)
+    argmax_macro_recall = macro_recall(score_argmax_recall)
 
     report = {
         "model": args.model,
@@ -233,9 +239,9 @@ def main() -> None:
         else None,
         "score_argmax_confusion_matrix": score_argmax_confusion,
         "score_argmax_per_level_recall": score_argmax_recall,
-        "score_macro_recall": (
-            float(np.mean(supported_recalls)) if supported_recalls else None
-        ),
+        "score_macro_recall": selected_macro_recall,
+        "score_selected_macro_recall": selected_macro_recall,
+        "score_argmax_macro_recall": argmax_macro_recall,
         "score_within_one_accuracy": (
             float(np.mean(score_within_one)) if score_within_one else None
         ),

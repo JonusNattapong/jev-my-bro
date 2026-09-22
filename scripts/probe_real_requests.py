@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import laya
+
+# Running ``python scripts/probe_real_requests.py`` puts ``scripts/`` rather
+# than the repository root on sys.path. Make the shared jevbro package
+# importable without requiring callers to set PYTHONPATH manually.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from jevbro.questions import default_questions
 
