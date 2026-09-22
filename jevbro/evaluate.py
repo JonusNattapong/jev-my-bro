@@ -72,6 +72,9 @@ def main() -> None:
     agent = laya.Agent(args.model, device=args.device)
     config = json.loads(Path(args.model, "rl_agent_config.json").read_text(encoding="utf-8"))
     score_thresholds = config.get("score_thresholds")
+    score_decoder = config.get("score_decoder")
+    if score_decoder not in {"argmax", "threshold", "nearest_expected"}:
+        score_decoder = "threshold" if score_thresholds else "nearest_expected"
 
     primitive = defaultdict(lambda: {"n": 0, "correct": 0.0, "brier": 0.0, "soft_accuracy": 0.0})
     language = defaultdict(lambda: {"n": 0, "correct": 0.0})
@@ -115,7 +118,12 @@ def main() -> None:
                     else nearest_level
                 )
                 argmax_level = int(np.argmax(pred))
-                predicted_level = threshold_level if score_thresholds else nearest_level
+                if score_decoder == "argmax":
+                    predicted_level = argmax_level
+                elif score_decoder == "threshold":
+                    predicted_level = threshold_level
+                else:
+                    predicted_level = nearest_level
                 gold_level = int(gold["label"])
                 correct = float(predicted_level == gold_level)
                 hard_error = abs(predicted_level - gold_level)
@@ -200,7 +208,7 @@ def main() -> None:
         "score_rps": float(np.mean(score_rps_values)) if score_rps_values else None,
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
-        "score_decoder": "threshold" if score_thresholds else "nearest_expected",
+        "score_decoder": score_decoder,
         "score_thresholds": score_thresholds,
         "score_nearest_accuracy": (
             sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_nearest_levels))

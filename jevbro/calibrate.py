@@ -113,6 +113,15 @@ def fit_score_thresholds(
     return thresholds, scores
 
 
+def select_score_decoder(thresholds: list[float], minimum_gap: float = 1e-3) -> str:
+    """Avoid threshold decoding when calibration collapses adjacent boundaries."""
+    if len(thresholds) != 4:
+        return "argmax"
+    if any(right - left <= minimum_gap for left, right in zip(thresholds, thresholds[1:])):
+        return "argmax"
+    return "threshold"
+
+
 def main() -> None:
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -139,15 +148,18 @@ def main() -> None:
         score_rows,
         temperatures[1],
     )
+    score_decoder = select_score_decoder(score_thresholds)
 
     cfg["temperature"] = temperatures
     cfg["score_thresholds"] = score_thresholds
+    cfg["score_decoder"] = score_decoder
     Path(args.model, "rl_agent_config.json").write_text(
         json.dumps(cfg, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     report["temperature"] = temperatures
     report["score_thresholds"] = score_thresholds
+    report["score_decoder"] = score_decoder
     report["score_boundary_balanced_accuracy"] = score_boundary_balanced_accuracy
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
