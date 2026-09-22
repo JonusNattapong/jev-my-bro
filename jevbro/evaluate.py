@@ -176,6 +176,11 @@ def main() -> None:
             "support": support,
             "recall": (score_argmax_confusion[level][level] / support) if support else None,
         }
+    supported_recalls = [
+        value["recall"]
+        for value in score_argmax_recall.values()
+        if value["recall"] is not None
+    ]
 
     report = {
         "model": args.model,
@@ -220,6 +225,12 @@ def main() -> None:
         else None,
         "score_argmax_confusion_matrix": score_argmax_confusion,
         "score_argmax_per_level_recall": score_argmax_recall,
+        "score_macro_recall": (
+            float(np.mean(supported_recalls)) if supported_recalls else None
+        ),
+        "score_within_one_accuracy": (
+            float(np.mean(score_within_one)) if score_within_one else None
+        ),
         "by_primitive": primitive_report,
         "by_language": {
             lang: {"n": values["n"], "accuracy": values["correct"] / values["n"]}
