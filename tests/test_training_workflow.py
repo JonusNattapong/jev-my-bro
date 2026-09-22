@@ -15,6 +15,12 @@ def test_colab_config_is_loadable_and_reproducible() -> None:
     assert config["train"].endswith("train.jsonl")
 
 
+def test_th500_config_keeps_ordinal_score_objective_enabled() -> None:
+    config = load_config(Path(__file__).parents[1] / "configs" / "colab-th500.yaml")
+    assert config["score_cumulative_weight"] > 0
+    assert 0 < config["score_class_balance_beta"] < 1
+
+
 def test_nll_is_finite_for_normalized_soft_target() -> None:
     value = multiclass_nll(np.array([0.75, 0.25]), np.array([0.5, 0.5]))
     assert np.isfinite(value)
