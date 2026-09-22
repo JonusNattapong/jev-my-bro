@@ -14,13 +14,43 @@ tags:
 
 # jev-my-bro
 
-`jev-my-bro` is a self-hosted, typed decision model for agent and tool governance.
-It answers structured questions about an operation—such as whether to execute,
-ask for approval, reject, or escalate—without generating prose as its primary
-output.
+**An advisory decision model for agent and tool governance.**
 
-The active release is **jev-my-bro v0.2**. It is a domain-specialized
-decision model for English and Thai operational requests.
+`jev-my-bro` is a self-hosted, typed decision model for agents that need to
+decide whether an operation should execute, ask for approval, reject, or
+escalate. It returns structured probabilities instead of generating prose as
+its primary output.
+
+<p align="center">
+  <img
+    src="docs/assets/jev-my-bro-flow.png"
+    alt="Jev my bro decision flow: an agent asks, Jev advises, and policy, tests, and human approval decide"
+    width="100%"
+  />
+</p>
+
+> **Jev advises. Evidence and policy decide.**
+
+The published release remains **jev-my-bro v0.2**. The current development
+line adds the Score v4 ordinal-risk redesign, the 8,508-case provenance-aware
+dataset, and the shared MCP/task-feedback integration.
+
+## The Jev contract
+
+The runtime is intentionally bounded: open a task, request a decision, carry
+out implementation, verify the result, and record completion or failure.
+Jev's output is an independent signal for routing and escalation; it never
+overrides repository policy, explicit approvals, tests, or human review.
+
+| Stage | Responsibility | Typical output |
+| --- | --- | --- |
+| `jev_task_start` | Create a bounded task context | `task_id` |
+| `jev_decide` | Ask the typed decision model | `choice`, `noul`, `score` |
+| Implementation | Coding agent follows policy and approvals | Changed files / no-op |
+| Verification | Run relevant tests and checks | Evidence and exit code |
+| Completion | Record the actual outcome | `jev_task_complete` or `jev_task_fail` |
+
+For the agent integration, see [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md).
 
 > This project is a research and engineering artifact. The checked-in dataset is
 > bootstrap development data. Do not use the model as the sole production
@@ -137,11 +167,9 @@ The ordinal-risk redesign and v4 training recipe are documented in
 
 ## Evaluation: what has actually run
 
-The v0.2 checkpoint was trained on a Google Colab NVIDIA T4. These are measured
-results from the **older 1,008-case bootstrap dataset and its 144-case test
-split**, not from the current `data/hf_expanded/` snapshot. A fresh train,
-calibration, and test run is required before publishing metrics for the 8,508-case
-dataset:
+The published v0.2 checkpoint was trained on a Google Colab NVIDIA T4. Its
+historical metrics were measured before the Score v4 rubric and should not be
+treated as current 8,508-case benchmark results:
 
 | Metric | Result |
 | --- | ---: |
@@ -157,6 +185,13 @@ dataset:
 The CPU error analysis is numerically slightly different because inference is
 performed with CPU weights and kernels: 157/576 errors, or 27.26%. The GPU
 evaluation is the source of the 26.22% figure above.
+
+The latest Score v4 development report is `artifacts/v41/test-report.json`,
+evaluated on the current 144-case `data/test.jsonl` split. It reports 74.65%
+overall accuracy, 0.0743 ECE, 79.17% choice accuracy, 84.38% noul accuracy,
+50.69% exact score accuracy, 0.637 QWK, 82.64% within-one score accuracy, and
+0.0756 RPS. This is a local development experiment, not a replacement
+published-model claim and not an 8,508-case full retraining result.
 
 ### Error analysis
 
@@ -357,6 +392,37 @@ For arbitrary Laya-compatible questions, use `POST /v1/predict`:
 }
 ```
 
+For TypeSafe SDKs and Jev-class evaluation harnesses, use the compatible
+`POST /v1/systemone` envelope:
+
+```bash
+curl -X POST http://127.0.0.1:8080/v1/systemone \
+  -H "content-type: application/json" \
+  -d '{
+    "model": "jev-my-bro",
+    "state": {"request": "Deploy the service to production"},
+    "questions": {
+      "action": {
+        "type": "choice",
+        "instructions": "What should the agent do?",
+        "criteria": {
+          "execute": "Proceed now",
+          "ask_user": "Request explicit approval",
+          "reject": "Do not proceed"
+        }
+      }
+    }
+  }'
+```
+
+The route accepts `jev-my-bro`, `jev-my-bro-latest`, and `jev-latest` as model
+aliases and returns the TypeSafe answer envelope (`model`, `answers`, and
+`usage`). It supports the published `choice`, `score`, and `noul` request and
+answer shapes. Compatibility is at the HTTP contract level; the implementation
+remains the local Laya checkpoint, so its configured context and question-head
+token budgets still apply. Oversized rendered rubrics return HTTP 422 instead
+of being silently truncated.
+
 The optional Go gateway forwards `/health`, `/v1/decide`, `/v1/predict`, and
 the namespaced integration routes under `/v1/jev-my-bro/`. Its defaults are
 gateway `localhost:8090` and Python service `localhost:8080`.
@@ -367,8 +433,8 @@ Install the editable CLI once, then run one shared MCP process so the Laya
 checkpoint is loaded once:
 
 ```powershell
-.\\.venv\\Scripts\\python.exe -m pip install -e . --no-deps
-jev serve --model artifacts/laya-model --host 127.0.0.1 --port 8787
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+.\.venv\Scripts\jev.exe serve --model .\artifacts\laya-model --host 127.0.0.1 --port 8787
 ```
 
 Clients connect to `http://127.0.0.1:8787/mcp`. For non-trivial coding tasks,
@@ -385,22 +451,23 @@ and OpenCode setup.
 
 Jev stores task sessions, attached decisions, and final outcomes in
 `artifacts/feedback/jev_feedback.sqlite3`. The same lifecycle is available from
-MCP and the `jev` CLI:
+MCP and the `jev` CLI. The commands below use the installed console entry point
+directly so they work without activating the virtual environment:
 
 ```powershell
-jev health
-jev task start "Fix regression" --agent codex --repo jev-my-bro
-jev task status jevtask-...
-jev task complete jevtask-... --choice minimal_patch --tests-passed --test-command "pytest -q" --test-exit-code 0
-jev task fail jevtask-... --reason "dependency unavailable"
-jev task list --status completed
-jev stats
-jev eval
-jev export
+.\.venv\Scripts\jev.exe health
+.\.venv\Scripts\jev.exe task start "Fix regression" --agent codex --repo jev-my-bro
+.\.venv\Scripts\jev.exe task status jevtask-...
+.\.venv\Scripts\jev.exe task complete jevtask-... --choice minimal_patch --tests-passed --test-command "pytest -q" --test-exit-code 0
+.\.venv\Scripts\jev.exe task fail jevtask-... --reason "dependency unavailable"
+.\.venv\Scripts\jev.exe task list --status completed
+.\.venv\Scripts\jev.exe stats
+.\.venv\Scripts\jev.exe eval
+.\.venv\Scripts\jev.exe export
 ```
 
-Without an activated venv, `.\\jev.cmd ...` runs the same CLI. The older
-`.\\jev-feedback.cmd` wrapper remains for compatibility.
+The repository also contains legacy wrappers under `scripts/`; new
+documentation uses `.\.venv\Scripts\jev.exe` as the canonical Windows path.
 
 The default export is `artifacts/feedback/v0.3-feedback.jsonl`, one row per
 feedback session with nested Jev decisions. Treat it as reviewable evidence, not
@@ -426,6 +493,7 @@ The router also exposes:
 | `GET` | `/v1/jev-my-bro/health` | Integration health check |
 | `POST` | `/v1/jev-my-bro/decide` | Governance decision using the default four questions |
 | `POST` | `/v1/jev-my-bro/predict` | Custom typed questions and state |
+| `POST` | `/v1/systemone` | TypeSafe-compatible typed decision wire format |
 
 The old `/health`, `/v1/decide`, and `/v1/predict` routes remain available for
 backward compatibility. The namespaced routes return `engine: jev-my-bro` so a
@@ -448,19 +516,23 @@ GPU-capable environment such as Google Colab.
 
 jev-my-bro project code and project-authored bootstrap data are licensed under
 **Apache License 2.0**; see [`LICENSE`](LICENSE). Laya is also an Apache-2.0
-dependency; see [`THIRD_PARTY.md`](THIRD_PARTY.md).
+dependency; see [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md).
 
 The active dataset is mixed-source: MASSIVE Thai rows record CC BY 4.0,
 BANKING77 rows record MIT, while Hermes function-calling rows and the 1,008
 project-authored bootstrap rows are Apache-2.0. The repository Apache license
-does not override upstream dataset terms. See [`DATA_LICENSE.md`](DATA_LICENSE.md),
-[`data/hf_expanded/README.md`](data/hf_expanded/README.md), and
+does not override upstream dataset terms. See
+[`data/hf_expanded/README.md`](data/hf_expanded/README.md),
+[`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md), and
 [`data/hf_expanded/SOURCE_MANIFEST.json`](data/hf_expanded/SOURCE_MANIFEST.json)
 before redistributing derived artifacts.
 
 ## Status
 
-v0.2 establishes the jev-my-bro training and serving path on the Laya runtime, a real Colab GPU
-checkpoint, error-analysis tooling, and CPU/GPU inference measurements. The
-next model-quality milestone is human review of the 8,508-case provenance-aware
-dataset, followed by a new Colab training/calibration/test run.
+The published v0.2 release establishes the Laya training/serving path and real
+Colab checkpoint. Current development adds Score v4 ordinal targets/losses,
+the 8,508-case provenance-aware dataset, richer ordinal evaluation, and MCP
+task feedback. The next model-quality milestone is human review of the
+8,508-case dataset followed by a fresh full train/calibration/test run.
+
+Documentation index: [`docs/README.md`](docs/README.md).

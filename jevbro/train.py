@@ -12,14 +12,16 @@ from laya.common import QTYPES, proper_reward
 
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
+from jevbro.config import apply_config_defaults
 from jevbro.data import load_items
 from jevbro.ordinal import cumulative_ordinal_loss, effective_number_weights, ranked_probability_loss
 
 DEFAULT_BASE = "convaiinnovations/laya-multilingual"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune Laya with RLCD on jev-my-bro data")
+    parser.add_argument("--config", default=None, help="YAML config with the same keys as CLI options")
     parser.add_argument("--train", default="data/train.jsonl")
     parser.add_argument("--validation", default="data/validation.jsonl")
     parser.add_argument("--base-model", default=DEFAULT_BASE)
@@ -42,7 +44,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sigma-start", type=float, default=0.4)
     parser.add_argument("--sigma-end", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
-    return parser.parse_args()
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    apply_config_defaults(parser, argv)
+    return parser.parse_args(argv)
 
 
 def seed_everything(seed: int) -> None:
@@ -113,11 +117,12 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
 
 def main() -> None:
     args = parse_args()
-    if not torch.cuda.is_available():
-        raise SystemExit("CUDA GPU is required for RLCD fine-tuning. Use the Colab notebook with GPU enabled.")
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise SystemExit("CUDA was requested but is not available.")
+    device = torch.device("cuda" if args.device == "cuda" or (args.device == "auto" and torch.cuda.is_available()) else "cpu")
 
     seed_everything(args.seed)
-    device = torch.device("cuda")
+    print(f"[train] device={device}", flush=True)
     model, tokenizer, cfg, resolved_base = load_trainable(args.base_model, device)
 
     cfg["max_len"] = int(cfg.get("max_len", 1024))
@@ -174,7 +179,7 @@ def main() -> None:
         T_max=total_updates,
         eta_min=1e-6,
     )
-    scaler = torch.amp.GradScaler("cuda", enabled=True)
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     started = time.time()
 
     for epoch in range(args.epochs):
@@ -198,7 +203,7 @@ def main() -> None:
             labels = batch["label"].to(device)
             language = batch["language"].to(device)
 
-            with torch.autocast("cuda", dtype=torch.float16):
+            with torch.autocast("cuda", dtype=torch.float16, enabled=device.type == "cuda"):
                 logits, action_logits = model(
                     input_ids,
                     attention_mask,

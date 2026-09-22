@@ -95,3 +95,12 @@ python -m jevbro.train `
 - per-level recall/support
 
 Use the dedicated calibration split after training, then evaluate only once on test for the final comparison.
+
+## Current experiment status
+
+The latest checked-in Score v4 development report is `../artifacts/v41/test-report.json`.
+It evaluates the current 144-case bootstrap test split and reports 74.65% overall
+accuracy, 50.69% exact score accuracy, 0.637 QWK, 82.64% within-one score
+accuracy, and 0.0756 RPS. `../artifacts/v41/` contains reports only; it is not a
+servable checkpoint directory. The local serving checkpoint remains
+`../artifacts/laya-model/` until a newer model is materialized locally.

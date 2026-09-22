@@ -1,10 +1,10 @@
 # jev-my-bro typed decision dataset
 
-Static dataset authored for this repository. There is intentionally no dataset generator checked into the project.
+This directory contains the original project-authored bootstrap dataset. The active provenance-aware training corpus is `hf_expanded/` with 8,508 cases; see [`hf_expanded/README.md`](hf_expanded/README.md).
 
 Each JSONL row is one operation-governance case containing four Laya-compatible typed questions: action (choice), needs_review (noul), prohibited (noul), and risk (score).
 
-Targets are probability distributions rather than only hard labels. The calibration split is reserved only for fitting temperatures after training, and the test split remains untouched until final evaluation.
+Targets are probability distributions rather than only hard labels. The calibration split is reserved only for fitting temperatures after training, and the test split remains untouched until final evaluation. Risk targets now follow the Score v4 ordinal rubric with distance-aware probability targets; see [`../docs/SCORE_V4.md`](../docs/SCORE_V4.md).
 
 Summary:
 {

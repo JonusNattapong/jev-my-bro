@@ -1,0 +1,79 @@
+{
+  "selected_variants": [
+    "approval_context",
+    "conflict_context",
+    "ood_mixed_indirect",
+    "revoked_approval"
+  ],
+  "splits": {
+    "train": {
+      "cases": 4790,
+      "curated_cases": 666,
+      "selected_expanded_cases": 4124,
+      "actions": {
+        "ask_user": 2780,
+        "execute": 1788,
+        "reject": 222
+      },
+      "risks": {
+        "3": 1292,
+        "2": 2000,
+        "0": 1222,
+        "4": 192,
+        "1": 84
+      }
+    },
+    "validation": {
+      "cases": 732,
+      "curated_cases": 144,
+      "selected_expanded_cases": 588,
+      "actions": {
+        "ask_user": 408,
+        "reject": 48,
+        "execute": 276
+      },
+      "risks": {
+        "2": 290,
+        "4": 48,
+        "0": 206,
+        "1": 4,
+        "3": 184
+      }
+    },
+    "calibration": {
+      "cases": 784,
+      "curated_cases": 144,
+      "selected_expanded_cases": 640,
+      "actions": {
+        "execute": 291,
+        "reject": 48,
+        "ask_user": 445
+      },
+      "risks": {
+        "0": 202,
+        "4": 48,
+        "2": 330,
+        "3": 192,
+        "1": 12
+      }
+    },
+    "test": {
+      "cases": 792,
+      "curated_cases": 144,
+      "selected_expanded_cases": 648,
+      "actions": {
+        "reject": 48,
+        "execute": 296,
+        "ask_user": 448
+      },
+      "risks": {
+        "4": 48,
+        "0": 208,
+        "3": 212,
+        "2": 312,
+        "1": 12
+      }
+    }
+  },
+  "scenario_families": 2598
+}

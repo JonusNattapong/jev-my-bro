@@ -23,6 +23,9 @@ func main() {
 	mux.HandleFunc("/v1/predict", func(w http.ResponseWriter, r *http.Request) {
 		proxy(client, upstream+"/v1/predict", w, r)
 	})
+	mux.HandleFunc("/v1/systemone", func(w http.ResponseWriter, r *http.Request) {
+		proxy(client, upstream+"/v1/systemone", w, r)
+	})
 	mux.HandleFunc("/v1/jev-my-bro/health", func(w http.ResponseWriter, r *http.Request) {
 		proxy(client, upstream+"/v1/jev-my-bro/health", w, r)
 	})

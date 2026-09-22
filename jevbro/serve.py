@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import os
+
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_TORCH", "1")
 
 import laya
 import uvicorn
 from fastapi import FastAPI
 
-from jevbro.router import DecideRequest, PredictRequest, create_router, decision_response
+from jevbro.router import (
+    DecideRequest,
+    PredictRequest,
+    create_router,
+    create_systemone_router,
+    decision_response,
+)
 
 
 def create_app(agent) -> FastAPI:
     app = FastAPI(title="jev-my-bro", version="0.2.0")
     app.include_router(create_router(agent))
+    app.include_router(create_systemone_router(agent))
 
     @app.get("/health")
     def health() -> dict:

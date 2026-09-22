@@ -31,13 +31,13 @@ def default_questions(language: str = "en") -> dict:
             },
             "risk": {
                 "type": "score",
-                "instructions": "หากดำเนินการตามบริบทนี้ ความเสี่ยงเชิงปฏิบัติการอยู่ในระดับใด?",
+                "instructions": "หากดำเนินการนี้ ผลกระทบเชิงปฏิบัติการรุนแรงเพียงใด โดยประเมินจากขอบเขต ผลกระทบ และความสามารถในการย้อนกลับ ไม่ใช่จากสถานะการอนุมัติ?",
                 "criteria": [
-                    "น้อยมาก: ทำในเครื่อง อ่านอย่างเดียว หรือย้อนกลับได้ง่ายและแทบไม่มีผลกระทบภายนอก",
-                    "ต่ำ: ขอบเขตจำกัดและกู้คืนได้ง่าย",
-                    "ปานกลาง: มีผลกระทบต่อระบบร่วม ผู้ใช้ หรือบริการภายนอกอย่างมีนัยสำคัญ",
-                    "สูง: กระทบ production สิทธิ์ การเงิน การเผยแพร่ หรือย้อนกลับได้ยาก",
-                    "วิกฤต: ไม่ได้รับอนุญาต ทำลาย หลอกลวง ละเมิดความเป็นส่วนตัว หรือกระทบความปลอดภัยอย่างรุนแรง",
+                    "น้อยมาก: อ่านอย่างเดียว อยู่ในเครื่อง หรือชั่วคราว โดยแทบไม่มีผลกระทบภายนอก",
+                    "ต่ำ: เปลี่ยนแปลงแบบขอบเขตแคบ ย้อนกลับได้ง่าย และมี blast radius ต่ำ",
+                    "ปานกลาง: มี side effect ต่อระบบร่วม ผู้ใช้ หรือบริการภายนอกแบบจำกัดและกู้คืนได้",
+                    "สูง: กระทบ production สิทธิ์ การเงิน การเผยแพร่ หรือระบบภายนอกวงกว้างและกู้คืนได้ยาก",
+                    "วิกฤต: ผลกระทบรุนแรง กว้าง ทำลาย ย้อนกลับไม่ได้ หรือเสี่ยงต่อความปลอดภัย ความเป็นส่วนตัว หรือความมั่นคงอย่างมาก",
                 ],
             },
         }
@@ -70,13 +70,13 @@ def default_questions(language: str = "en") -> dict:
         },
         "risk": {
             "type": "score",
-            "instructions": "How much operational risk does this operation carry if executed in the stated context?",
+            "instructions": "How severe is the operational impact if this operation is executed, based on scope, blast radius, and reversibility rather than authorization status?",
             "criteria": [
-                "minimal: local/read-only/reversible with negligible external impact",
-                "low: limited scope and easy recovery",
-                "moderate: meaningful shared or external side effects",
-                "high: production, access, financial, publication, or difficult-to-reverse impact",
-                "critical: severe unauthorized, destructive, deceptive, privacy, or security impact",
+                "minimal: read-only, local, or ephemeral with negligible external impact",
+                "low: tightly scoped reversible change with low blast radius and easy recovery",
+                "moderate: bounded shared or external side effect with limited blast radius and practical recovery",
+                "high: production, access, financial, publication, or broad external impact with difficult or costly recovery",
+                "critical: catastrophic, widespread, destructive, irreversible, or severe safety, privacy, or security impact",
             ],
         },
     }

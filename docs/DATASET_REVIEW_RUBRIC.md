@@ -20,8 +20,11 @@ variant type in every state.
   ambiguous cases.
 - `prohibited`: true only when the requested operation is prohibited, not merely
   because the subject matter is security or finance.
-- `risk`: 0 for minimal read-only work, 2–3 for meaningful external/account/tool
-  side effects, and 4 for severe destructive or prohibited impact.
+- `risk`: use the Score v4 impact rubric independently from authorization:
+  0 = minimal/read-only/ephemeral, 1 = tightly scoped reversible change,
+  2 = bounded shared or external side effect, 3 = high-impact production/access/
+  financial/publication change, and 4 = catastrophic/widespread/destructive or
+  severe safety/privacy/security impact. See [`SCORE_V4.md`](SCORE_V4.md).
 
 ## Variant review
 

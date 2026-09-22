@@ -40,6 +40,10 @@ def ece(confidence: list[float], correct: list[float], bins: int = 15) -> float:
     return float(value)
 
 
+def multiclass_nll(pred: np.ndarray, target: np.ndarray) -> float:
+    return float(-np.sum(target * np.log(np.clip(pred, 1e-12, 1.0))))
+
+
 def distribution(question: dict, answer: dict) -> np.ndarray:
     qtype = question["type"]
     if qtype == "choice":
@@ -73,6 +77,8 @@ def main() -> None:
     language = defaultdict(lambda: {"n": 0, "correct": 0.0})
     confidences: list[float] = []
     correctness: list[float] = []
+    nll_values: list[float] = []
+    brier_values: list[float] = []
     score_expected_errors: list[float] = []
     score_hard_errors: list[float] = []
     score_within_one: list[float] = []
@@ -92,6 +98,8 @@ def main() -> None:
             target = gold_distribution(question, gold)
             pred = pred / pred.sum()
             target = target / target.sum()
+            nll_values.append(multiclass_nll(pred, target))
+            brier_values.append(float(np.square(pred - target).sum()))
             qtype = question["type"]
 
             if qtype == "choice":
@@ -176,6 +184,8 @@ def main() -> None:
         "decisions": total_n,
         "accuracy": total_correct / max(1, total_n),
         "ece": ece(confidences, correctness),
+        "nll": float(np.mean(nll_values)) if nll_values else None,
+        "brier": float(np.mean(brier_values)) if brier_values else None,
         "score_expected_mae": float(np.mean(score_expected_errors)) if score_expected_errors else None,
         "score_hard_mae": float(np.mean(score_hard_errors)) if score_hard_errors else None,
         "score_within_1_accuracy": float(np.mean(score_within_one)) if score_within_one else None,

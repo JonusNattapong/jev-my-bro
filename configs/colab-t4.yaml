@@ -1,0 +1,23 @@
+# Reproducible Google Colab T4 defaults. Secrets are supplied by the runtime.
+train: data/hf_expanded/train.jsonl
+validation: data/hf_expanded/validation.jsonl
+base_model: convaiinnovations/laya-multilingual
+output: artifacts/laya-colab-t4
+epochs: 4
+micro_batch: 4
+grad_accum: 8
+group_size: 4
+checkpoint_each_epoch: true
+english_weight: 1.5
+choice_weight: 1.5
+score_weight: 2.0
+score_ce_weight: 0.5
+score_rps_weight: 1.0
+score_class_balance_beta: 0.0
+score_cumulative_weight: 0.0
+encoder_lr: 0.000025
+head_lr: 0.0001
+sigma_start: 0.4
+sigma_end: 0.1
+seed: 42
+device: cuda

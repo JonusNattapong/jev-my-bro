@@ -1,8 +1,43 @@
 {
+  "dataset_id": "JonusNattapong/jev-my-bro-dataset",
+  "snapshot_date": "2026-09-21",
+  "cases": 8508,
+  "decisions": 34032,
+  "scenario_families": 2508,
+  "splits": {
+    "train": {
+      "cases": 5731,
+      "english": 3829,
+      "thai": 1902
+    },
+    "validation": {
+      "cases": 879,
+      "english": 586,
+      "thai": 293
+    },
+    "calibration": {
+      "cases": 944,
+      "english": 641,
+      "thai": 303
+    },
+    "test": {
+      "cases": 954,
+      "english": 616,
+      "thai": 338
+    }
+  },
   "sources": {
+    "jev_my_bro_static": {
+      "dataset": "jev-my-bro-static-v0.1",
+      "cases": 1008,
+      "license": "apache-2.0",
+      "attribution": "jev-my-bro project dataset",
+      "language": "en+th"
+    },
     "massive_th": {
       "dataset": "AmazonScience/massive",
       "config": "th-TH",
+      "cases": 2500,
       "license": "cc-by-4.0",
       "attribution": "FitzGerald et al., MASSIVE (2022); Amazon Science",
       "language": "th"
@@ -10,6 +45,7 @@
     "banking77_en": {
       "dataset": "mteb/banking77",
       "config": null,
+      "cases": 2500,
       "license": "mit",
       "attribution": "Casanueva et al., BANKING77 (2020); MTEB mirror",
       "language": "en"
@@ -17,17 +53,46 @@
     "hermes_tools_en": {
       "dataset": "NousResearch/hermes-function-calling-v1",
       "config": "func_calling_singleturn",
+      "cases": 2500,
       "license": "apache-2.0",
       "attribution": "Nous Research Hermes function-calling dataset",
       "language": "en"
     }
   },
-  "label_status": "rule_reviewed",
-  "variants": [
-    "base",
-    "approval_context",
-    "revoked_approval",
-    "conflict_context",
-    "ood_mixed_indirect"
+  "label_status": {
+    "existing-static": "original bootstrap development labels",
+    "rule_reviewed": "rule-derived and consistency-reviewed; not human annotation"
+  },
+  "variants": {
+    "base": 2508,
+    "approval_context": 1500,
+    "revoked_approval": 1500,
+    "conflict_context": 1500,
+    "ood_mixed_indirect": 1500
+  },
+  "action_counts": {
+    "ask_user": 4766,
+    "execute": 3406,
+    "reject": 336
+  },
+  "risk_counts": {
+    "0": 2623,
+    "1": 68,
+    "2": 3168,
+    "3": 2313,
+    "4": 336
+  },
+  "risk_target": {
+    "scheme": "gaussian_ordinal",
+    "sigma": 0.75,
+    "score": "probability-weighted expected level"
+  },
+  "published_repo": "https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset",
+  "notes": [
+    "Train, validation, calibration, and test remain independent.",
+    "Scenario families are kept within one split.",
+    "The combined dataset is mixed-source and mixed-license; source-specific license metadata is retained.",
+    "Published model metrics from jev-my-bro v0.2 were measured on the older 1,008-case bootstrap dataset and are not metrics for this snapshot.",
+    "Risk targets use the v4 ordinal rubric and distance-aware Gaussian probability targets; authorization status is not itself a risk level."
   ]
 }
