@@ -24,6 +24,64 @@ def expected_level(probabilities: Sequence[float]) -> float:
     return float(sum(index * float(value) for index, value in enumerate(probabilities)))
 
 
+def coral_boundary_logits(
+    class_logits: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Project class logits onto CORAL-style cumulative boundary logits.
+
+    For five ordered levels this returns four logits, one for each event
+    ``P(y > boundary)``.  The projection preserves the existing Laya five-class
+    checkpoint/output contract while giving training a proper ordinal target.
+    """
+    if class_logits.ndim < 1 or class_logits.shape[-1] < 2:
+        raise ValueError("class_logits must have at least two levels")
+    if mask is None:
+        mask = torch.ones_like(class_logits, dtype=torch.bool)
+    if mask.shape != class_logits.shape:
+        raise ValueError("mask and class_logits must have the same shape")
+    masked = class_logits.masked_fill(~mask, -1e4)
+    # Explicit slices keep the cumulative direction obvious and TorchScript-safe.
+    boundaries = []
+    levels = class_logits.shape[-1]
+    for boundary in range(levels - 1):
+        left = torch.logsumexp(masked[..., : boundary + 1], dim=-1)
+        right = torch.logsumexp(masked[..., boundary + 1 :], dim=-1)
+        boundaries.append(right - left)
+    return torch.stack(boundaries, dim=-1)
+
+
+def coral_class_probabilities(boundary_logits: torch.Tensor) -> torch.Tensor:
+    """Decode cumulative boundary logits into a monotone class distribution."""
+    if boundary_logits.ndim < 1 or boundary_logits.shape[-1] < 1:
+        raise ValueError("boundary_logits must contain at least one boundary")
+    survival = torch.sigmoid(boundary_logits)
+    survival = torch.cummin(survival, dim=-1).values
+    first = 1.0 - survival[..., :1]
+    middle = survival[..., :-1] - survival[..., 1:]
+    last = survival[..., -1:]
+    return torch.cat((first, middle, last), dim=-1).clamp_min(0.0)
+
+
+def coral_ordinal_loss(
+    class_logits: torch.Tensor,
+    target: torch.Tensor,
+    mask: torch.Tensor,
+) -> torch.Tensor:
+    """Train cumulative ordinal boundaries with CORAL-style BCE targets."""
+    boundaries = coral_boundary_logits(class_logits, mask)
+    boundary_mask = mask[..., :-1] & mask[..., 1:]
+    target_cdf = torch.cumsum(target * mask, dim=-1)[..., :-1]
+    target_survival = (1.0 - target_cdf).clamp(0.0, 1.0)
+    losses = F.binary_cross_entropy_with_logits(
+        boundaries,
+        target_survival,
+        reduction="none",
+    )
+    count = boundary_mask.sum(dim=-1).clamp(min=1).to(class_logits.dtype)
+    return (losses * boundary_mask).sum(dim=-1) / count
+
+
 def hard_level_from_expected(value: float, levels: int = 5) -> int:
     """Decode an ordinal score by nearest expected level, avoiding argmax collapse."""
     if levels < 2:

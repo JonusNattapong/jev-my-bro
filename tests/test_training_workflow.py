@@ -21,6 +21,12 @@ def test_th500_config_keeps_ordinal_score_objective_enabled() -> None:
     assert 0 < config["score_class_balance_beta"] < 1
 
 
+def test_th560_config_selects_ordinal_balanced_dataset() -> None:
+    config = load_config(Path(__file__).parents[1] / "configs" / "colab-th560.yaml")
+    assert config["train"].endswith("data/th_curated_560/train.jsonl")
+    assert config["score_cumulative_weight"] == 1.0
+
+
 def test_nll_is_finite_for_normalized_soft_target() -> None:
     value = multiclass_nll(np.array([0.75, 0.25]), np.array([0.5, 0.5]))
     assert np.isfinite(value)

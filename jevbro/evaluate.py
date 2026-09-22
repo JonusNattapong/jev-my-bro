@@ -115,7 +115,7 @@ def main() -> None:
                     else nearest_level
                 )
                 argmax_level = int(np.argmax(pred))
-                predicted_level = argmax_level
+                predicted_level = threshold_level if score_thresholds else nearest_level
                 gold_level = int(gold["label"])
                 correct = float(predicted_level == gold_level)
                 hard_error = abs(predicted_level - gold_level)
@@ -200,7 +200,7 @@ def main() -> None:
         "score_rps": float(np.mean(score_rps_values)) if score_rps_values else None,
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
-        "score_decoder": "argmax",
+        "score_decoder": "threshold" if score_thresholds else "nearest_expected",
         "score_thresholds": score_thresholds,
         "score_nearest_accuracy": (
             sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_nearest_levels))

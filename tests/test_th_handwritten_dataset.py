@@ -42,3 +42,14 @@ def test_th_handwritten_splits_are_independent_and_balanced() -> None:
                 assert row["action"] == "reject"
                 assert row["needs_review"] == "true"
                 assert row["prohibited"] == "true"
+
+
+def test_handwritten_holdout_has_no_duplicate_scenario_requests() -> None:
+    holdout = read_csv("holdout.csv")
+    requests_by_split = {
+        split: {row["request"] for row in holdout if row["split"] == split}
+        for split in ("validation", "calibration", "test")
+    }
+    assert not (requests_by_split["validation"] & requests_by_split["calibration"])
+    assert not (requests_by_split["validation"] & requests_by_split["test"])
+    assert not (requests_by_split["calibration"] & requests_by_split["test"])

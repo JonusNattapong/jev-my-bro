@@ -14,9 +14,26 @@ from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
 from jevbro.config import apply_config_defaults
 from jevbro.data import load_items
-from jevbro.ordinal import cumulative_ordinal_loss, effective_number_weights, ranked_probability_loss
+from jevbro.ordinal import (
+    coral_ordinal_loss,
+    effective_number_weights,
+    hard_level_from_expected,
+    quadratic_weighted_kappa,
+    ranked_probability_loss,
+)
 
 DEFAULT_BASE = "convaiinnovations/laya-multilingual"
+
+
+def is_better_score_checkpoint(candidate: dict, best: dict | None) -> bool:
+    """Select validation checkpoints by ordinal quality, never overall accuracy."""
+    if best is None:
+        return True
+    candidate_qwk = float(candidate.get("qwk", float("nan")))
+    best_qwk = float(best.get("qwk", float("nan")))
+    if not math.isclose(candidate_qwk, best_qwk, rel_tol=0.0, abs_tol=1e-12):
+        return candidate_qwk > best_qwk
+    return float(candidate.get("rps", float("inf"))) < float(best.get("rps", float("inf")))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -67,6 +84,8 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
     score_hard_error = 0.0
     score_expected_error = 0.0
     score_rps_sum = 0.0
+    score_truth: list[int] = []
+    score_predictions: list[int] = []
     for start in range(0, len(items), batch_size):
         batch = collate_items(items[start : start + batch_size], tokenizer.pad_token_id)
         input_ids = batch["input_ids"].to(device)
@@ -100,6 +119,10 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
             score_rps_sum += float(
                 ranked_probability_loss(selected_probs, selected_target, selected_mask).sum().item()
             )
+            score_truth.extend(int(value) for value in selected_labels.cpu().tolist())
+            score_predictions.extend(
+                hard_level_from_expected(float(value)) for value in pred_expected.cpu().tolist()
+            )
         total += len(labels)
     model.train()
     return {
@@ -111,6 +134,9 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
             "hard_mae": score_hard_error / max(1, score_n),
             "expected_mae": score_expected_error / max(1, score_n),
             "rps": score_rps_sum / max(1, score_n),
+            "qwk": quadratic_weighted_kappa(score_truth, score_predictions, levels=5)
+            if score_truth
+            else None,
         },
     }
 
@@ -181,6 +207,8 @@ def main() -> None:
     )
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     started = time.time()
+    best_score: dict | None = None
+    best_epoch: int | None = None
 
     for epoch in range(args.epochs):
         random.Random(args.seed + epoch).shuffle(train_items)
@@ -269,7 +297,7 @@ def main() -> None:
             ).sum(-1)
             probs = torch.softmax(logits.masked_fill(~marker_mask, -1e4), -1)
             loss_rps = ranked_probability_loss(probs, target, marker_mask)
-            loss_cumulative = cumulative_ordinal_loss(probs, target, marker_mask)
+            loss_cumulative = coral_ordinal_loss(logits, target, marker_mask)
             is_score = (qtype == QTYPES["score"]).float()
             supervised = loss_ce * (1.0 - is_score + is_score * args.score_ce_weight)
             supervised = supervised + is_score * args.score_rps_weight * loss_rps
@@ -316,33 +344,50 @@ def main() -> None:
             flush=True,
         )
 
+        epoch_cfg = dict(cfg)
+        epoch_cfg["fine_tuned"] = True
+        epoch_cfg["model_name"] = "jev-my-bro"
+        epoch_cfg["base_model"] = args.base_model
+        epoch_cfg["temperature"] = [1.0, 1.0, 1.0]
+        epoch_cfg["training"] = {
+            "method": "rlcd_plus_coral_ordinal_soft_ce_rps",
+            "epochs": epoch + 1,
+            "seed": args.seed,
+            "train_sequences": len(train_items),
+            "validation_sequences": len(validation_items),
+            "score_ce_weight": args.score_ce_weight,
+            "score_rps_weight": args.score_rps_weight,
+            "score_class_balance_beta": args.score_class_balance_beta,
+            "score_level_weights": args.score_level_weights,
+            "score_cumulative_weight": args.score_cumulative_weight,
+            "validation_score_qwk": metrics["score"]["qwk"],
+            "validation_score_rps": metrics["score"]["rps"],
+        }
         if args.checkpoint_each_epoch:
-            epoch_cfg = dict(cfg)
-            epoch_cfg["fine_tuned"] = True
-            epoch_cfg["model_name"] = "jev-my-bro"
-            epoch_cfg["base_model"] = args.base_model
-            epoch_cfg["temperature"] = [1.0, 1.0, 1.0]
-            epoch_cfg["training"] = {
-                "method": "rlcd_plus_ordinal_soft_ce_rps",
-                "epochs": epoch + 1,
-                "seed": args.seed,
-                "train_sequences": len(train_items),
-                "validation_sequences": len(validation_items),
-                "score_ce_weight": args.score_ce_weight,
-                "score_rps_weight": args.score_rps_weight,
-                "score_class_balance_beta": args.score_class_balance_beta,
-                "score_level_weights": args.score_level_weights,
-                "score_cumulative_weight": args.score_cumulative_weight,
-            }
             save_checkpoint(model, tokenizer, epoch_cfg, f"{args.output}/epoch-{epoch + 1}")
             print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
+
+        selection = {
+            "qwk": metrics["score"]["qwk"],
+            "rps": metrics["score"]["rps"],
+        }
+        if is_better_score_checkpoint(selection, best_score):
+            best_score = selection
+            best_epoch = epoch + 1
+            epoch_cfg["training"]["selected_by"] = "validation_score_qwk_then_rps"
+            save_checkpoint(model, tokenizer, epoch_cfg, args.output)
+            print(
+                f"[train] selected epoch={best_epoch} "
+                f"qwk={selection['qwk']:.4f} rps={selection['rps']:.4f}",
+                flush=True,
+            )
 
     cfg["fine_tuned"] = True
     cfg["model_name"] = "jev-my-bro"
     cfg["base_model"] = args.base_model
     cfg["temperature"] = [1.0, 1.0, 1.0]
     cfg["training"] = {
-        "method": "rlcd_plus_ordinal_soft_ce_rps",
+        "method": "rlcd_plus_coral_ordinal_soft_ce_rps",
         "epochs": args.epochs,
         "seed": args.seed,
         "train_sequences": len(train_items),
@@ -352,10 +397,20 @@ def main() -> None:
         "score_class_balance_beta": args.score_class_balance_beta,
         "score_level_weights": args.score_level_weights,
         "score_cumulative_weight": args.score_cumulative_weight,
+        "selected_by": "validation_score_qwk_then_rps",
+        "best_epoch": best_epoch,
+        "best_score_qwk": best_score["qwk"] if best_score else None,
+        "best_score_rps": best_score["rps"] if best_score else None,
     }
     model.eval()
-    save_checkpoint(model, tokenizer, cfg, args.output)
-    print(f"[train] saved checkpoint to {args.output}", flush=True)
+    save_checkpoint(model, tokenizer, cfg, f"{args.output}/last")
+    if best_score is None:
+        save_checkpoint(model, tokenizer, cfg, args.output)
+    print(
+        f"[train] saved last checkpoint to {args.output}/last; "
+        f"selected best checkpoint={args.output} epoch={best_epoch}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

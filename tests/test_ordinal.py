@@ -4,6 +4,8 @@ import pytest
 import torch
 
 from jevbro.ordinal import (
+    coral_boundary_logits,
+    coral_class_probabilities,
     cumulative_ordinal_loss,
     effective_number_weights,
     expected_level,
@@ -14,6 +16,17 @@ from jevbro.ordinal import (
     ranked_probability_loss,
     ranked_probability_score,
 )
+
+
+def test_coral_projection_exposes_four_monotone_boundaries() -> None:
+    logits = torch.tensor([[4.0, 2.0, 0.0, -2.0, -4.0]])
+    boundaries = coral_boundary_logits(logits)
+    probabilities = coral_class_probabilities(boundaries)
+
+    assert boundaries.shape == (1, 4)
+    assert torch.all(boundaries[:, :-1] > boundaries[:, 1:])
+    assert torch.allclose(probabilities.sum(-1), torch.ones(1), atol=1e-6)
+    assert torch.all(probabilities >= 0)
 
 
 def test_ordinal_soft_target_is_unimodal_and_distance_aware() -> None:
@@ -70,3 +83,11 @@ def test_threshold_decoder_uses_calibrated_boundaries() -> None:
     assert hard_level_from_thresholds(0.80, thresholds) == 1
     assert hard_level_from_thresholds(1.80, thresholds) == 2
     assert hard_level_from_thresholds(3.60, thresholds) == 4
+
+
+def test_validation_checkpoint_selection_prefers_qwk_then_lower_rps() -> None:
+    from jevbro.train import is_better_score_checkpoint
+
+    assert is_better_score_checkpoint({"qwk": 0.80, "rps": 0.10}, {"qwk": 0.79, "rps": 0.05})
+    assert is_better_score_checkpoint({"qwk": 0.80, "rps": 0.04}, {"qwk": 0.80, "rps": 0.05})
+    assert not is_better_score_checkpoint({"qwk": 0.79, "rps": 0.01}, {"qwk": 0.80, "rps": 0.20})

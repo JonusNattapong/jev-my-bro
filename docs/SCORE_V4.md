@@ -43,6 +43,7 @@ The score primitive keeps RLCD's proper reward (which already includes RPS) and 
 score supervised loss =
     score_ce_weight * soft_cross_entropy
   + score_rps_weight * ranked_probability_loss
+  + score_cumulative_weight * CORAL-compatible cumulative boundary loss
 ```
 
 Defaults:
@@ -52,6 +53,7 @@ Defaults:
 --score-ce-weight 0.5
 --score-rps-weight 1.0
 --score-class-balance-beta 0.0
+--score-cumulative-weight 1.0
 ```
 
 Class-balanced effective-number weighting is available as an ablation. For the 1k experiment, try `--score-class-balance-beta 0.99`.

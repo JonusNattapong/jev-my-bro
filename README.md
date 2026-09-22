@@ -104,7 +104,7 @@ Native PyTorch inference -> FastAPI -> optional Go gateway
 | Base checkpoint | `convaiinnovations/laya-multilingual` |
 | Languages | English and Thai |
 | Decision primitives | `choice`, `noul`, `score` |
-| Training | RLCD plus ordinal soft-target CE and direct RPS for `score` |
+| Training | RLCD plus CORAL-compatible cumulative ordinal loss, soft-target CE, and direct RPS for `score` |
 | Calibration | One held-out temperature per primitive |
 | Runtime | Native Laya/PyTorch served through FastAPI |
 | Coding-agent integration | MCP v2 over Streamable HTTP or stdio |
@@ -113,6 +113,10 @@ Native PyTorch inference -> FastAPI -> optional Go gateway
 
 The model does not fit calibration temperatures on validation or test data.
 Train, validation, calibration, and test remain independent.
+
+For the Thai ordinal-balanced run, use `configs/colab-th560.yaml`. Its root
+checkpoint is selected by validation score QWK, breaking ties with lower RPS;
+the final epoch is retained under `artifacts/laya-th560/last`.
 
 ## Dataset
 

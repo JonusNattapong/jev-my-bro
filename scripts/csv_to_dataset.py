@@ -113,6 +113,15 @@ def build_case(row: dict[str, str], language: str, where: str) -> dict:
             "request": row["request"].strip(),
             "domain": row["domain"].strip(),
             "source": "jev-my-bro-handwritten-th-v1",
+            # New authoring files may provide stable writer/scenario groups.
+            # Legacy rows fall back to request identity rather than inventing
+            # writer metadata that the source does not contain.
+            "scenario_family": row.get("scenario_family", "").strip() or row["id"].strip(),
+            **(
+                {"writer_id": row["writer_id"].strip()}
+                if row.get("writer_id", "").strip()
+                else {}
+            ),
         },
         "questions": QUESTIONS,
         "gold": {
