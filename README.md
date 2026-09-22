@@ -17,6 +17,7 @@ The latest manually curated Thai experiment is `laya-th960`:
 
 - Model: [JonusNattapong/jev-my-bro-th960](https://huggingface.co/JonusNattapong/jev-my-bro-th960)
 - Dataset: [JonusNattapong/jev-my-bro-dataset-th960](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset-th960)
+- Model Card: [`docs/model-cards/jev-my-bro-th960.md`](docs/model-cards/jev-my-bro-th960.md)
 - Training data: 960 Thai cases
 - Validation, calibration, and test: 100 cases each
 - Test: 100 cases, 400 typed decisions, 20 cases per risk level

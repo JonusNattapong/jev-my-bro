@@ -19,6 +19,7 @@ MCP/task-feedback workflow.
 | Latest Score v4 reports | `../artifacts/v41/` |
 | Latest Thai dataset | `../data/th_curated_960/` |
 | Latest Thai model card/results | [`../README.md`](../README.md) |
+| Hugging Face Thai model card | `model-cards/jev-my-bro-th960.md` |
 | Thai result visualization | `assets/laya-th960-results.svg` |
 | CLI executable after editable install | `../.venv/Scripts/jev.exe` |
 | MCP endpoint | `http://127.0.0.1:8787/mcp` |
