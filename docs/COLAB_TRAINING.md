@@ -31,7 +31,7 @@ The active dataset must contain `train.jsonl`, `validation.jsonl`, `calibration.
 
 This writes epoch checkpoints and the final checkpoint under `artifacts/laya-colab-t4`. The seed, split paths, batch sizes, learning rates, and RLCD/ordinal weights are all in the config. Explicit CLI flags override config values.
 
-## 4. Fit calibration and evaluate the untouched test split
+## 4. Fit calibration and lock the final test evaluation
 
 ```bash
 !python -m jevbro.calibrate \
@@ -43,10 +43,35 @@ This writes epoch checkpoints and the final checkpoint under `artifacts/laya-col
   --model artifacts/laya-colab-t4 \
   --data data/hf_expanded/test.jsonl \
   --device cuda \
+  --lock-decoder \
   --report artifacts/laya-colab-t4/test-report.json
 ```
 
-The final report contains overall accuracy, English/Thai accuracy, per-primitive accuracy and Brier score, ECE, NLL, and score-specific ordinal metrics. Do not tune against `test.jsonl`.
+The calibration command writes temperature, score thresholds, decoder choice, and
+the calibration-file hash into `rl_agent_config.json`. `--lock-decoder` refuses
+to evaluate unless that provenance exists, so the test split cannot select or
+fit the decoder. The final report contains overall accuracy, English/Thai
+accuracy, per-primitive accuracy and Brier score, ECE, NLL, and score-specific
+ordinal metrics. Do not tune against `test.jsonl`.
+
+For the current Thai 960-case experiment, build and validate the checked-in
+splits first, then use the matching T4 config:
+
+```bash
+!python scripts/build_th_curated_960.py
+!python scripts/validate_dataset.py --root data/th_curated_960
+!python -m jevbro.train --config configs/colab-th960.yaml
+!python -m jevbro.calibrate \
+  --model artifacts/laya-th960 \
+  --data data/th_curated_960/calibration.jsonl \
+  --report artifacts/laya-th960/calibration-report.json
+!python -m jevbro.evaluate \
+  --model artifacts/laya-th960 \
+  --data data/th_curated_960/test.jsonl \
+  --device cuda \
+  --lock-decoder \
+  --report artifacts/laya-th960/test-report.json
+```
 
 ## 5. Publish without hardcoded credentials
 

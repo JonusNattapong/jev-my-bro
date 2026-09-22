@@ -23,6 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", default="data/test.jsonl")
     parser.add_argument("--device")
     parser.add_argument("--report", default="artifacts/test-report.json")
+    parser.add_argument(
+        "--lock-decoder",
+        action="store_true",
+        help="require decoder provenance from calibration and never fit on test data",
+    )
     return parser.parse_args()
 
 
@@ -53,6 +58,23 @@ def macro_recall(recall_report: dict[str, dict[str, float | int | None]]) -> flo
     return float(np.mean(recalls)) if recalls else None
 
 
+def validate_locked_decoder(config: dict, test_data: Path) -> None:
+    """Require a decoder explicitly produced by the calibration split."""
+    provenance = config.get("calibration")
+    if not isinstance(provenance, dict) or provenance.get("decoder_selection") != "calibration_only":
+        raise ValueError(
+            "locked evaluation requires calibration provenance in rl_agent_config.json; "
+            "run jevbro.calibrate on calibration.jsonl first"
+        )
+    if config.get("score_decoder") not in {"argmax", "threshold", "nearest_expected"}:
+        raise ValueError("locked evaluation requires a calibrated score_decoder")
+    if not config.get("temperature") or not config.get("score_thresholds"):
+        raise ValueError("locked evaluation requires calibrated temperatures and score thresholds")
+    calibration_data = provenance.get("dataset")
+    if calibration_data and Path(calibration_data).resolve() == test_data.resolve():
+        raise ValueError("locked evaluation cannot use the calibration split as test data")
+
+
 def distribution(question: dict, answer: dict) -> np.ndarray:
     qtype = question["type"]
     if qtype == "choice":
@@ -77,9 +99,12 @@ def gold_distribution(question: dict, gold: dict) -> np.ndarray:
 
 def main() -> None:
     args = parse_args()
-    cases = read_cases(args.data)
+    data_path = Path(args.data)
     agent = laya.Agent(args.model, device=args.device)
     config = json.loads(Path(args.model, "rl_agent_config.json").read_text(encoding="utf-8"))
+    if args.lock_decoder:
+        validate_locked_decoder(config, data_path)
+    cases = read_cases(data_path)
     score_thresholds = config.get("score_thresholds")
     score_decoder = config.get("score_decoder")
     if score_decoder not in {"argmax", "threshold", "nearest_expected"}:
@@ -215,6 +240,9 @@ def main() -> None:
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
         "score_decoder": score_decoder,
+        "decoder_selection": (
+            "calibration_only" if args.lock_decoder else "model_config"
+        ),
         "score_thresholds": score_thresholds,
         "score_nearest_accuracy": (
             sum(float(truth == pred) for truth, pred in zip(score_true_levels, score_nearest_levels))

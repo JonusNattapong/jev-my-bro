@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -18,6 +19,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", default="artifacts/calibration-report.json")
     parser.add_argument("--batch-size", type=int, default=16)
     return parser.parse_args()
+
+
+def validate_calibration_data(path: Path) -> None:
+    """Reject the test split so calibration cannot silently leak test labels."""
+    lowered = {part.lower() for part in path.parts}
+    if path.name.lower() == "test.jsonl" or "test" in lowered:
+        raise ValueError(
+            f"refusing to fit calibration on a test split: {path}; "
+            "use calibration.jsonl"
+        )
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def collect(model, tokenizer, items: list[dict], device: torch.device, batch_size: int):
@@ -124,9 +143,11 @@ def select_score_decoder(thresholds: list[float], minimum_gap: float = 1e-3) -> 
 
 def main() -> None:
     args = parse_args()
+    calibration_path = Path(args.data)
+    validate_calibration_data(calibration_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, tokenizer, cfg, _ = load_trainable(args.model, device)
-    items = load_items(tokenizer, cfg, args.data)
+    items = load_items(tokenizer, cfg, calibration_path)
     raw = collect(model, tokenizer, items, device, args.batch_size)
 
     temperatures = [1.0, 1.0, 1.0]
@@ -150,9 +171,16 @@ def main() -> None:
     )
     score_decoder = select_score_decoder(score_thresholds)
 
+    calibration_provenance = {
+        "dataset": str(calibration_path),
+        "dataset_sha256": sha256_file(calibration_path),
+        "decoder_selection": "calibration_only",
+        "report": str(Path(args.report)),
+    }
     cfg["temperature"] = temperatures
     cfg["score_thresholds"] = score_thresholds
     cfg["score_decoder"] = score_decoder
+    cfg["calibration"] = calibration_provenance
     Path(args.model, "rl_agent_config.json").write_text(
         json.dumps(cfg, indent=2, ensure_ascii=False),
         encoding="utf-8",
@@ -160,6 +188,8 @@ def main() -> None:
     report["temperature"] = temperatures
     report["score_thresholds"] = score_thresholds
     report["score_decoder"] = score_decoder
+    report["decoder_selection"] = "calibration_only"
+    report["calibration_dataset_sha256"] = calibration_provenance["dataset_sha256"]
     report["score_boundary_balanced_accuracy"] = score_boundary_balanced_accuracy
     report_path = Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
