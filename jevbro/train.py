@@ -36,6 +36,31 @@ def is_better_score_checkpoint(candidate: dict, best: dict | None) -> bool:
     return float(candidate.get("rps", float("inf"))) < float(best.get("rps", float("inf")))
 
 
+def checkpoint_selection_score(metrics: dict) -> float:
+    """Balance general decision accuracy with ordinal score quality."""
+    score = metrics.get("score", {})
+    return (
+        0.45 * float(metrics.get("accuracy", 0.0))
+        + 0.35 * float(score.get("macro_recall", 0.0))
+        + 0.20 * float(score.get("within_one_accuracy", 0.0))
+    )
+
+
+def is_better_checkpoint(candidate: dict, best: dict | None) -> bool:
+    """Select a checkpoint by the validation metrics used for final evaluation."""
+    if best is None:
+        return True
+    candidate_score = float(candidate.get("selection_score", float("nan")))
+    best_score = float(best.get("selection_score", float("nan")))
+    if not math.isclose(candidate_score, best_score, rel_tol=0.0, abs_tol=1e-12):
+        return candidate_score > best_score
+    candidate_qwk = float(candidate.get("qwk", float("nan")))
+    best_qwk = float(best.get("qwk", float("nan")))
+    if not math.isclose(candidate_qwk, best_qwk, rel_tol=0.0, abs_tol=1e-12):
+        return candidate_qwk > best_qwk
+    return float(candidate.get("rps", float("inf"))) < float(best.get("rps", float("inf")))
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune Laya with RLCD on jev-my-bro data")
     parser.add_argument("--config", default=None, help="YAML config with the same keys as CLI options")
@@ -86,6 +111,8 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
     score_rps_sum = 0.0
     score_truth: list[int] = []
     score_predictions: list[int] = []
+    score_argmax_predictions: list[int] = []
+    score_within_one = 0
     for start in range(0, len(items), batch_size):
         batch = collate_items(items[start : start + batch_size], tokenizer.pad_token_id)
         input_ids = batch["input_ids"].to(device)
@@ -119,12 +146,23 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
             score_rps_sum += float(
                 ranked_probability_loss(selected_probs, selected_target, selected_mask).sum().item()
             )
+            score_within_one += int((pred_levels - selected_labels).abs().le(1).sum().item())
             score_truth.extend(int(value) for value in selected_labels.cpu().tolist())
             score_predictions.extend(
                 hard_level_from_expected(float(value)) for value in pred_expected.cpu().tolist()
             )
+            score_argmax_predictions.extend(int(value) for value in pred_levels.cpu().tolist())
         total += len(labels)
     model.train()
+    recalls = []
+    for level in range(5):
+        truth_count = sum(value == level for value in score_truth)
+        if truth_count:
+            hit_count = sum(
+                truth == level and prediction == level
+                for truth, prediction in zip(score_truth, score_argmax_predictions)
+            )
+            recalls.append(hit_count / truth_count)
     return {
         "accuracy": correct / max(1, total),
         "soft_nll": nll_sum / max(1, total),
@@ -134,6 +172,8 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
             "hard_mae": score_hard_error / max(1, score_n),
             "expected_mae": score_expected_error / max(1, score_n),
             "rps": score_rps_sum / max(1, score_n),
+            "macro_recall": sum(recalls) / max(1, len(recalls)),
+            "within_one_accuracy": score_within_one / max(1, score_n),
             "qwk": quadratic_weighted_kappa(score_truth, score_predictions, levels=5)
             if score_truth
             else None,
@@ -368,17 +408,24 @@ def main() -> None:
             print(f"[train] saved epoch checkpoint to {args.output}/epoch-{epoch + 1}", flush=True)
 
         selection = {
+            "selection_score": checkpoint_selection_score(metrics),
+            "accuracy": metrics["accuracy"],
+            "macro_recall": metrics["score"]["macro_recall"],
+            "within_one_accuracy": metrics["score"]["within_one_accuracy"],
             "qwk": metrics["score"]["qwk"],
             "rps": metrics["score"]["rps"],
         }
-        if is_better_score_checkpoint(selection, best_score):
+        if is_better_checkpoint(selection, best_score):
             best_score = selection
             best_epoch = epoch + 1
-            epoch_cfg["training"]["selected_by"] = "validation_score_qwk_then_rps"
+            epoch_cfg["training"]["selected_by"] = "validation_composite_accuracy_macro_recall_within_one"
             save_checkpoint(model, tokenizer, epoch_cfg, args.output)
             print(
                 f"[train] selected epoch={best_epoch} "
-                f"qwk={selection['qwk']:.4f} rps={selection['rps']:.4f}",
+                f"selection={selection['selection_score']:.4f} "
+                f"accuracy={selection['accuracy']:.4f} "
+                f"macro_recall={selection['macro_recall']:.4f} "
+                f"within_one={selection['within_one_accuracy']:.4f}",
                 flush=True,
             )
 
@@ -397,8 +444,9 @@ def main() -> None:
         "score_class_balance_beta": args.score_class_balance_beta,
         "score_level_weights": args.score_level_weights,
         "score_cumulative_weight": args.score_cumulative_weight,
-        "selected_by": "validation_score_qwk_then_rps",
+        "selected_by": "validation_composite_accuracy_macro_recall_within_one",
         "best_epoch": best_epoch,
+        "best_selection_score": best_score["selection_score"] if best_score else None,
         "best_score_qwk": best_score["qwk"] if best_score else None,
         "best_score_rps": best_score["rps"] if best_score else None,
     }

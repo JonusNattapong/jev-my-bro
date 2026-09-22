@@ -91,3 +91,32 @@ def test_validation_checkpoint_selection_prefers_qwk_then_lower_rps() -> None:
     assert is_better_score_checkpoint({"qwk": 0.80, "rps": 0.10}, {"qwk": 0.79, "rps": 0.05})
     assert is_better_score_checkpoint({"qwk": 0.80, "rps": 0.04}, {"qwk": 0.80, "rps": 0.05})
     assert not is_better_score_checkpoint({"qwk": 0.79, "rps": 0.01}, {"qwk": 0.80, "rps": 0.20})
+
+
+def test_checkpoint_selection_balances_accuracy_and_score_metrics() -> None:
+    from jevbro.train import checkpoint_selection_score, is_better_checkpoint
+
+    general_model = {
+        "selection_score": checkpoint_selection_score(
+            {
+                "accuracy": 0.80,
+                "score": {"macro_recall": 0.60, "within_one_accuracy": 0.90},
+            }
+        ),
+        "qwk": 0.80,
+        "rps": 0.10,
+    }
+    ordinal_model = {
+        "selection_score": checkpoint_selection_score(
+            {
+                "accuracy": 0.77,
+                "score": {"macro_recall": 0.80, "within_one_accuracy": 0.95},
+            }
+        ),
+        "qwk": 0.80,
+        "rps": 0.10,
+    }
+
+    assert general_model["selection_score"] == pytest.approx(0.75)
+    assert ordinal_model["selection_score"] == pytest.approx(0.8165)
+    assert is_better_checkpoint(ordinal_model, general_model)
