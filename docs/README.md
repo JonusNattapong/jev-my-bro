@@ -2,9 +2,10 @@
 
 This directory is the documentation index for `jev-my-bro`.
 
-The published model release remains **v0.2**. Current development work includes
-the **Score v4** ordinal-risk redesign, the **8,508-case** provenance-aware
-dataset, and the shared MCP/task-feedback workflow.
+The repository includes the published v0.2 path plus the latest Thai
+`laya-th960` training/evaluation experiment. Current development work includes
+the Score v4 ordinal-risk redesign, split-safe calibration, and the shared
+MCP/task-feedback workflow.
 
 ## Canonical paths
 
@@ -16,6 +17,9 @@ dataset, and the shared MCP/task-feedback workflow.
 | Dataset provenance manifest | `../data/hf_expanded/SOURCE_MANIFEST.json` |
 | Local serving checkpoint | `../artifacts/laya-model/` |
 | Latest Score v4 reports | `../artifacts/v41/` |
+| Latest Thai dataset | `../data/th_curated_960/` |
+| Latest Thai model card/results | [`../README.md`](../README.md) |
+| Thai result visualization | `assets/laya-th960-results.svg` |
 | CLI executable after editable install | `../.venv/Scripts/jev.exe` |
 | MCP endpoint | `http://127.0.0.1:8787/mcp` |
 | Feedback database | `../artifacts/feedback/jev_feedback.sqlite3` |
@@ -66,6 +70,12 @@ audit flags        0
 
 The Hugging Face dataset is
 `JonusNattapong/jev-my-bro-dataset`.
+
+The latest Thai model and dataset are versioned separately:
+`JonusNattapong/jev-my-bro-th960` and
+`JonusNattapong/jev-my-bro-dataset-th960`. The final locked test result is
+documented in the repository README and visualized in
+[`assets/laya-th960-results.svg`](assets/laya-th960-results.svg).
 
 ## Local MCP quick start
 

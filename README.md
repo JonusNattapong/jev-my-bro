@@ -1,542 +1,282 @@
----
-model_name: jev-my-bro-v0.2
-license: apache-2.0
-language:
-  - en
-  - th
-tags:
-  - decision-model
-  - system-one
-  - agent-governance
-  - tool-governance
-  - reinforcement-learning
----
-
 # jev-my-bro
 
-**An advisory decision model for agent and tool governance.**
+Jev is a self-hosted typed decision model for agent and tool governance. It
+turns a request into four signals:
 
-`jev-my-bro` is a self-hosted, typed decision model for agents that need to
-decide whether an operation should execute, ask for approval, reject, or
-escalate. It returns structured probabilities instead of generating prose as
-its primary output.
+- `action`: `execute`, `ask_user`, or `reject`
+- `needs_review`: whether a human must review before execution
+- `prohibited`: whether the operation must be blocked
+- `risk`: an ordinal operational-impact score from 0 to 4
 
-<p align="center">
-  <img
-    src="docs/assets/jev-my-bro-flow.png"
-    alt="Jev my bro decision flow: an agent asks, Jev advises, and policy, tests, and human approval decide"
-    width="100%"
-  />
-</p>
+Jev is an advisory component. It must not replace repository policy, explicit
+approval, tests, audit logs, or a human safety boundary.
 
-> **Jev advises. Evidence and policy decide.**
+## Latest Thai model
 
-The published release remains **jev-my-bro v0.2**. The current development
-line adds the Score v4 ordinal-risk redesign, the 8,508-case provenance-aware
-dataset, and the shared MCP/task-feedback integration.
+The latest manually curated Thai experiment is `laya-th960`:
 
-## The Jev contract
+- Model: [JonusNattapong/jev-my-bro-th960](https://huggingface.co/JonusNattapong/jev-my-bro-th960)
+- Dataset: [JonusNattapong/jev-my-bro-dataset-th960](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset-th960)
+- Training data: 960 Thai cases
+- Validation, calibration, and test: 100 cases each
+- Test: 100 cases, 400 typed decisions, 20 cases per risk level
+- Selected checkpoint: epoch 5, selected from validation
+- Test decoder: threshold, selected from calibration only
 
-The runtime is intentionally bounded: open a task, request a decision, carry
-out implementation, verify the result, and record completion or failure.
-Jev's output is an independent signal for routing and escalation; it never
-overrides repository policy, explicit approvals, tests, or human review.
+![laya-th960 test results](docs/assets/laya-th960-results.svg)
 
-| Stage | Responsibility | Typical output |
-| --- | --- | --- |
-| `jev_task_start` | Create a bounded task context | `task_id` |
-| `jev_decide` | Ask the typed decision model | `choice`, `noul`, `score` |
-| Implementation | Coding agent follows policy and approvals | Changed files / no-op |
-| Verification | Run relevant tests and checks | Evidence and exit code |
-| Completion | Record the actual outcome | `jev_task_complete` or `jev_task_fail` |
+### Final locked test result
 
-For the agent integration, see [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md).
-
-> This project is a research and engineering artifact. The checked-in dataset is
-> bootstrap development data. Do not use the model as the sole production
-> authorization control without reviewed operational data, an independent policy
-> layer, human escalation, audit logs, and real outcome feedback.
-
-## What it decides
-
-For each state, the model evaluates four typed questions:
-
-| Question | Type | Meaning |
-| --- | --- | --- |
-| `action` | `choice` | `execute`, `ask_user`, or `reject` |
-| `needs_review` | `noul` | Whether a human review is needed |
-| `prohibited` | `noul` | Whether the operation is prohibited |
-| `risk` | `score` | A five-level operational risk score |
-
-The result is a probability distribution for every question. This makes the
-model useful as a routing and escalation signal, not only as a hard classifier.
-
-Typical inputs include Git operations, deployments, production changes,
-security actions, payment operations, tool calls, and requests containing Thai,
-English, or mixed-language wording.
-
-## Architecture
-
-The active pipeline is built on the open-source Laya System-1 architecture:
-
-```text
-English/Thai state
-        |
-        v
-Laya multilingual base
-        |
-        v
-Typed decision head: choice / noul / score
-        |
-        v
-RLCD + ordinal soft-target cross entropy + direct RPS
-        |
-        v
-Independent temperature calibration
-        |
-        v
-Native PyTorch inference -> FastAPI -> optional Go gateway
-```
-
-| Component | jev-my-bro v0.2 |
-| --- | --- |
-| Foundation | Laya 0.3.4 |
-| Base checkpoint | `convaiinnovations/laya-multilingual` |
-| Languages | English and Thai |
-| Decision primitives | `choice`, `noul`, `score` |
-| Training | RLCD plus CORAL-compatible cumulative ordinal loss, soft-target CE, and direct RPS for `score` |
-| Calibration | One held-out temperature per primitive |
-| Runtime | Native Laya/PyTorch served through FastAPI |
-| Coding-agent integration | MCP v2 over Streamable HTTP or stdio |
-| Optional integration | Go reverse proxy |
-| Legacy baseline | `baseline/deberta` |
-
-The model does not fit calibration temperatures on validation or test data.
-Train, validation, calibration, and test remain independent.
-
-For the Thai ordinal-balanced run, use `configs/colab-th560.yaml`. Its root
-checkpoint is selected by validation score QWK, breaking ties with lower RPS;
-the final epoch is retained under `artifacts/laya-th560/last`.
-
-## Dataset
-
-The original bootstrap source contains **1,008 cases / 4,032 typed decisions**:
-
-| Split | Cases | Typed decisions | English | Thai |
-| --- | ---: | ---: | ---: | ---: |
-| Train | 576 | 2,304 | 384 | 192 |
-| Validation | 144 | 576 | 96 | 48 |
-| Calibration | 144 | 576 | 96 | 48 |
-| Test | 144 | 576 | 96 | 48 |
-| **Total** | **1,008** | **4,032** | **672** | **336** |
-
-Each case contains a state, four typed questions, and normalized probability
-targets. The dataset is intentionally checked in as JSONL; no unchecked dataset
-generator is part of the training path.
-
-The original expansion target of 5,000–10,000 cases has been reached. The active
-provenance-aware dataset is `data/hf_expanded/` with **8,508 cases**. Its
-acceptance rules and historical expansion plan are documented in
-[`docs/DATASET_EXPANSION_PLAN.md`](docs/DATASET_EXPANSION_PLAN.md), while the
-published Dataset Card lives in [`data/hf_expanded/README.md`](data/hf_expanded/README.md).
-
-Validate the active dataset before training:
-
-```bash
-python scripts/validate_dataset.py --root data/hf_expanded
-python scripts/audit_hf_dataset.py --root data/hf_expanded
-```
-
-The provenance-aware expansion is in `data/hf_expanded/` and contains **8,508
-cases / 34,032 typed decisions**: the original 1,008 cases plus 7,500 selected
-and transformed cases from MASSIVE Thai, BANKING77, and Hermes function calling.
-Each imported case records its source dataset, license, attribution, source
-record, scenario family, and variant type. The same snapshot is published at
-[`JonusNattapong/jev-my-bro-dataset`](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset).
-The full audit is reproducible with:
-
-```bash
-python scripts/validate_dataset.py --root data/hf_expanded
-python scripts/audit_hf_dataset.py --root data/hf_expanded
-```
-
-The audit currently reports **8,508 cases, 2,508 scenario families, and zero
-structural/provenance/variant flags**. Imported labels are marked `rule_reviewed`,
-not human-reviewed; the dataset must not be treated as a final production
-authorization policy until reviewers inspect the source/domain/variant slices.
-The published Dataset Card also documents source composition, split counts,
-action imbalance, per-source licenses, transformations, and known limitations.
-The ordinal-risk redesign and v4 training recipe are documented in
-[`docs/SCORE_V4.md`](docs/SCORE_V4.md).
-
-## Evaluation: what has actually run
-
-The published v0.2 checkpoint was trained on a Google Colab NVIDIA T4. Its
-historical metrics were measured before the Score v4 rubric and should not be
-treated as current 8,508-case benchmark results:
+The following result was produced after calibration and a locked test
+evaluation. The test split was not used to fit temperatures or select the
+decoder.
 
 | Metric | Result |
 | --- | ---: |
-| Test decisions | 576 |
-| Accuracy | 73.78% |
-| Error rate | 26.22% |
-| Expected calibration error | 0.0514 |
-| Score MAE | 0.5829 |
-| Choice accuracy | 76.39% |
-| Noul accuracy | 82.64% |
-| Score exact-level accuracy | 53.47% |
+| Overall accuracy | **88.00%** |
+| ECE | 0.1391 |
+| NLL | 0.6540 |
+| Brier score | 0.1159 |
+| Score expected MAE | 0.3517 |
+| Score hard MAE | 0.2600 |
+| Score within-one accuracy | **96.00%** |
+| Score QWK | **0.9150** |
+| Score RPS | 0.0433 |
+| Score macro recall | **0.7800** |
 
-The CPU error analysis is numerically slightly different because inference is
-performed with CPU weights and kernels: 157/576 errors, or 27.26%. The GPU
-evaluation is the source of the 26.22% figure above.
+Primitive accuracy:
 
-The latest Score v4 development report is `artifacts/v41/test-report.json`,
-evaluated on the current 144-case `data/test.jsonl` split. It reports 74.65%
-overall accuracy, 0.0743 ECE, 79.17% choice accuracy, 84.38% noul accuracy,
-50.69% exact score accuracy, 0.637 QWK, 82.64% within-one score accuracy, and
-0.0756 RPS. This is a local development experiment, not a replacement
-published-model claim and not an 8,508-case full retraining result.
-
-### Error analysis
-
-The report is generated by [`scripts/error_analysis.py`](scripts/error_analysis.py)
-and records primitive, language, domain, difficulty, wording slice, and expected-
-to-predicted confusion pairs.
-
-Important slices from the CPU analysis:
-
-| Slice | Errors / total | Error rate |
+| Primitive | Accuracy | Brier |
 | --- | ---: | ---: |
-| `choice` | 38 / 144 | 26.39% |
-| `noul` | 56 / 288 | 19.44% |
-| `score` | 63 / 144 | 43.75% |
-| English | 115 / 384 | 29.95% |
-| Thai | 42 / 192 | 21.88% |
-| Medium difficulty | 91 / 400 | 22.75% |
-| Hard difficulty | 66 / 160 | 41.25% |
+| `choice` | 89.00% | 0.1167 |
+| `noul` | 92.50% | 0.0572 |
+| `score` | 78.00% | 0.2327 |
 
-The largest action confusions were `execute -> ask_user` (19),
-`execute -> reject` (6), and `ask_user -> reject` (9). These are error slices,
-not causal proof: wording flags identify where to investigate ambiguity,
-conflicting context, payload formatting, or dataset bias. Small domains such as
-Git and code have high rates but too few cases for a reliable general claim.
+Score recall by risk level:
 
-Full local artifacts are written to `artifacts/error-analysis.json`, which is
-ignored by Git because model outputs and reports are generated artifacts.
+| Risk | Support | Recall |
+| ---: | ---: | ---: |
+| 0 | 20 | 85% |
+| 1 | 20 | 60% |
+| 2 | 20 | 90% |
+| 3 | 20 | 65% |
+| 4 | 20 | 90% |
 
-## Inference benchmark
+The remaining weakness is the boundary between risk 1 and risk 3. ECE is also
+not perfect, so confidence should be treated as a routing signal rather than a
+guarantee.
 
-The benchmark uses the real jev-my-bro checkpoint and test JSONL. It measures cold
-start, first request, p50, p95, throughput, process memory, and CUDA memory for
-batch sizes 1, 4, and 16.
+## Use the published model
 
-Important implementation detail: `laya.Agent.predict` currently exposes a
-single-request API. Therefore batch 1/4/16 below mean grouped sequential calls,
-not a fused tensor batch. The report says this explicitly; these numbers should
-not be interpreted as true batched model throughput.
+The model repository is private unless it is made public by its owner. In
+Colab, authenticate without placing a token in a notebook cell:
 
-### Local CPU
+```python
+%cd /content/jev-my-bro
+!pip install -q -r requirements.txt
 
-Measured on the development machine with PyTorch CPU:
-
-| Batch group | p50 | p95 | Throughput | Process RSS |
-| ---: | ---: | ---: | ---: | ---: |
-| 1 | 1,402.62 ms | 1,565.12 ms | 0.73 req/s | 1,814 MB |
-| 4 | 1,083.09 ms | 1,330.22 ms | 0.90 req/s | 1,817 MB |
-| 16 | 1,055.36 ms | 1,705.46 ms | 0.83 req/s | 1,877 MB |
-
-Cold start: model load 11.91 s; first request 0.98 s.
-
-### Colab GPU
-
-Measured on an NVIDIA T4 using the public checkpoint in
-[`JonusNattapong/jev-my-bro`](https://huggingface.co/JonusNattapong/jev-my-bro):
-
-| Batch group | p50 | p95 | Throughput | CUDA allocated / reserved |
-| ---: | ---: | ---: | ---: | ---: |
-| 1 | 29.01 ms | 37.08 ms | 32.02 req/s | 1,256 / 1,538 MB |
-| 4 | 29.54 ms | 36.15 ms | 33.15 req/s | 1,256 / 1,538 MB |
-| 16 | 33.72 ms | 45.68 ms | 28.73 req/s | 1,256 / 1,578 MB |
-
-Cold start: model load 24.64 s; first request 0.95 s; process RSS about
-2,047 MB. The model is therefore practical for a GPU-backed local service, but
-the CPU path is latency-heavy for interactive production use.
-
-Run the benchmark yourself:
-
-```bash
-python scripts/benchmark_inference.py \
-  --model artifacts/laya-model \
-  --data data/test.jsonl \
-  --device cpu \
-  --batch-sizes 1,4,16 \
-  --warmup 2 \
-  --repeats 10 \
-  --report artifacts/benchmark-cpu.json
+from huggingface_hub import notebook_login
+notebook_login()
 ```
 
-The Colab helper is [`scripts/colab_benchmark.py`](scripts/colab_benchmark.py).
+Load the model and make a Thai decision:
 
-## Comparison with OpenThai-SystemOne
+```python
+import json
+import torch
+from laya import Agent
+from jevbro.questions import default_questions
 
-OpenThai-SystemOne is the closest public comparison because it is also a typed
-Thai/English System-One decision model rather than a text-generation chatbot.
-The comparison below uses the OpenThai documentation and model card published
-by iApp/OpenThai. It is not a claim that the two benchmark numbers are directly
-comparable.
+MODEL_ID = "JonusNattapong/jev-my-bro-th960"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+agent = Agent(MODEL_ID, device=DEVICE)
 
-| Dimension | jev-my-bro v0.2 | OpenThai-SystemOne v0.1 |
-| --- | --- | --- |
-| Primary purpose | Agent/tool governance and authorization-adjacent routing | General typed decision API: routing, moderation, relevance, UI choice, scoring |
-| Architecture | Laya 0.3.4 multilingual base with typed head | Qwen3.5 text tower 0.8B, continued pretraining on about 5B Thai tokens, 256-way slot head |
-| Output | Native typed answers with probabilities | Typed answers with probabilities, confidence, and abstain for `choice` |
-| Types | `choice`, `noul`, `score` | `choice`, `noul`, `score` |
-| Choice space | Project action labels: execute / ask_user / reject | Up to 255 named options, including “none of the above” slot |
-| Score space | Fixed five-level operational risk target | 2–10 ordered levels; probability-weighted fractional score |
-| Training data | 8,508 cases / 34,032 decisions; 7,500 HF cases are rule-reviewed pending human audit | About 5B continued-pretraining Thai tokens; broader public evaluation sets |
-| Project adaptation | Explicit governance domains and approval semantics | General-purpose Thai/English decision behavior |
-| Calibration | Held-out temperature per primitive; test ECE 0.0514 | Published confidence/ECE tables and abstain signal |
-| License | Project code/model usage follows repository and upstream terms; Laya is Apache-2.0 | Apache-2.0 |
-| Local runtime | Native PyTorch/FastAPI; Go gateway optional | Open weights with local server recipe and hosted API |
-| Public API | Local `/v1/decide` and `/v1/predict` | `POST /v3/store/openthai/systemone` |
+def decide(request: str, domain: str = "general") -> dict:
+    result = agent.predict(
+        {"request": request, "domain": domain},
+        default_questions("th"),
+    )
+    answers = result["answers"]
+    return {
+        "request": request,
+        "action": answers["action"]["choice"],
+        "needs_review": answers["needs_review"]["noul"],
+        "prohibited": answers["prohibited"]["noul"],
+        "risk_score": answers["risk"]["score"],
+        "action_probabilities": answers["action"]["probabilities"],
+        "risk_probabilities": answers["risk"]["probabilities"],
+    }
 
-### How to read the benchmark difference
-
-OpenThai reports a **61.9 macro average** on a 13-subset public System-One
-benchmark. Its table also reports Jev 1.13.0 at 76.0 on that same public
-benchmark, but that is a different Jev release and evaluation path from this
-repository's v0.2 checkpoint. `jev-my-bro` reports 73.78% on its own held-out
-governance test set. These values should not be ranked against each other:
-
-1. OpenThai's public benchmark covers NLI, QA, moderation, summarization,
-   intents, and tool selection.
-2. `jev-my-bro`'s current test set measures project-specific action, review,
-   prohibition, and risk decisions.
-3. The test sizes, labels, sampling, and evaluation code differ.
-4. A fair head-to-head requires freezing a shared dataset and translating the
-   same question schema without leaking examples into training.
-
-The practical conclusion is narrower and more useful: OpenThai-SystemOne is a
-stronger general-purpose public baseline with broader evidence and a larger
-pretraining corpus, while `jev-my-bro` is currently more specialized for the
-repository's governance contract. OpenThai's `confidence`/`abstain` interface
-is a capability worth adopting or matching in a future release. Conversely,
-the explicit approval, revocation, prohibited-operation, and production-risk
-taxonomy is the main specialization this project is building.
-
-### Sources
-
-- [OpenThai-SystemOne documentation](https://iapp.co.th/docs/llm/openthai-systemone)
-- [OpenThai-SystemOne model page](https://iapp.co.th/openmodels/openthai-systemone)
-- [OpenThai-SystemOne weights](https://huggingface.co/iapp/OpenThai-SystemOne)
-- [OpenThai-SystemOne training repository](https://github.com/iapp-technology/openthai-systemone)
-- [jev-my-bro v0.2 checkpoint](https://huggingface.co/JonusNattapong/jev-my-bro)
-
-## Training
-
-Open [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb) in Google
-Colab, enable a GPU runtime, and point `SOURCE` at this repository. The
-equivalent commands are:
-
-```bash
-pip install -r requirements.txt
-
-python -m jevbro.train \
-  --train data/hf_expanded/train.jsonl \
-  --validation data/hf_expanded/validation.jsonl \
-  --base-model convaiinnovations/laya-multilingual \
-  --output artifacts/laya-model
-
-python -m jevbro.calibrate \
-  --model artifacts/laya-model \
-  --data data/hf_expanded/calibration.jsonl
-
-python -m jevbro.evaluate \
-  --model artifacts/laya-model \
-  --data data/hf_expanded/test.jsonl
+print(json.dumps(
+    decide("เปลี่ยนค่า firewall ของ production ให้เปิดจากอินเทอร์เน็ต", "network"),
+    ensure_ascii=False,
+    indent=2,
+))
 ```
 
-Never tune hyperparameters against the test split. Do not commit model weights,
-tokens, secrets, or Colab credentials.
+For a checkpoint already downloaded in Colab, use:
 
-## Local serving
+```python
+agent = Agent("artifacts/laya-th960", device="cuda")
+```
 
-```bash
-python -m jevbro.serve \
-  --model artifacts/laya-model \
-  --host 127.0.0.1 \
+Always put the policy gate outside the model:
+
+```python
+result = decide("ลบข้อมูลใน production ที่ไม่ใช้แล้ว", "database")
+
+if result["prohibited"] >= 0.5 or result["action"] == "reject":
+    decision = "reject"
+elif result["needs_review"] >= 0.5 or result["action"] == "ask_user":
+    decision = "human_review"
+else:
+    decision = "execute"
+```
+
+The prohibited signal has priority over the raw action. This prevents an
+ambiguous raw `ask_user` result from weakening a clear prohibited signal.
+
+## Run the local HTTP service
+
+Install the project and start the native Laya/PyTorch service:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+
+.\.venv\Scripts\python.exe -m jevbro.serve `
+  --model JonusNattapong/jev-my-bro-th960 `
+  --host 127.0.0.1 `
   --port 8080
 ```
 
-Health check:
+Check health:
 
-```bash
+```powershell
 curl http://127.0.0.1:8080/health
 ```
 
-Decision endpoint:
-
-```bash
-curl -X POST http://127.0.0.1:8080/v1/decide \
-  -H "content-type: application/json" \
-  -d '{"context":"Agent wants to force push main without explicit approval"}'
-```
-
-For arbitrary Laya-compatible questions, use `POST /v1/predict`:
-
-```json
-{
-  "state": {"request": "Deploy the service to production"},
-  "questions": {
-    "review": {
-      "type": "noul",
-      "instructions": "Does this require human review?"
-    }
-  }
-}
-```
-
-For TypeSafe SDKs and Jev-class evaluation harnesses, use the compatible
-`POST /v1/systemone` envelope:
-
-```bash
-curl -X POST http://127.0.0.1:8080/v1/systemone \
-  -H "content-type: application/json" \
-  -d '{
-    "model": "jev-my-bro",
-    "state": {"request": "Deploy the service to production"},
-    "questions": {
-      "action": {
-        "type": "choice",
-        "instructions": "What should the agent do?",
-        "criteria": {
-          "execute": "Proceed now",
-          "ask_user": "Request explicit approval",
-          "reject": "Do not proceed"
-        }
-      }
-    }
-  }'
-```
-
-The route accepts `jev-my-bro`, `jev-my-bro-latest`, and `jev-latest` as model
-aliases and returns the TypeSafe answer envelope (`model`, `answers`, and
-`usage`). It supports the published `choice`, `score`, and `noul` request and
-answer shapes. Compatibility is at the HTTP contract level; the implementation
-remains the local Laya checkpoint, so its configured context and question-head
-token budgets still apply. Oversized rendered rubrics return HTTP 422 instead
-of being silently truncated.
-
-The optional Go gateway forwards `/health`, `/v1/decide`, `/v1/predict`, and
-the namespaced integration routes under `/v1/jev-my-bro/`. Its defaults are
-gateway `localhost:8090` and Python service `localhost:8080`.
-
-### MCP for Codex, Claude Code, and OpenCode
-
-Install the editable CLI once, then run one shared MCP process so the Laya
-checkpoint is loaded once:
+Ask for a typed governance decision:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e . --no-deps
-.\.venv\Scripts\jev.exe serve --model .\artifacts\laya-model --host 127.0.0.1 --port 8787
+curl -X POST http://127.0.0.1:8080/v1/decide `
+  -H "content-type: application/json" `
+  -d '{"context":"Deploy the payment service to production","language":"en"}'
 ```
 
-Clients connect to `http://127.0.0.1:8787/mcp`. For non-trivial coding tasks,
-agents use `jev_task_start` -> optional `jev_decide(task_id=...)` calls ->
-normal implementation/testing -> `jev_task_complete` or `jev_task_fail`.
-`jev_task_status`, `jev_task_list`, and `jev_feedback_stats` provide
-inspection/evaluation. The older `jev_feedback_*` and `jev_record_outcome`
-APIs remain available for compatibility.
+The service also exposes `/v1/predict`, `/v1/jev-my-bro/decide`,
+`/v1/jev-my-bro/predict`, and `/v1/systemone`. See
+[`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) for connecting Codex,
+Claude Code, or OpenCode through MCP.
 
-See [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) for Codex, Claude Code,
-and OpenCode setup.
+## Reproduce the Thai 960 training run
 
-### Real-use feedback for v0.3
-
-Jev stores task sessions, attached decisions, and final outcomes in
-`artifacts/feedback/jev_feedback.sqlite3`. The same lifecycle is available from
-MCP and the `jev` CLI. The commands below use the installed console entry point
-directly so they work without activating the virtual environment:
-
-```powershell
-.\.venv\Scripts\jev.exe health
-.\.venv\Scripts\jev.exe task start "Fix regression" --agent codex --repo jev-my-bro
-.\.venv\Scripts\jev.exe task status jevtask-...
-.\.venv\Scripts\jev.exe task complete jevtask-... --choice minimal_patch --tests-passed --test-command "pytest -q" --test-exit-code 0
-.\.venv\Scripts\jev.exe task fail jevtask-... --reason "dependency unavailable"
-.\.venv\Scripts\jev.exe task list --status completed
-.\.venv\Scripts\jev.exe stats
-.\.venv\Scripts\jev.exe eval
-.\.venv\Scripts\jev.exe export
-```
-
-The repository also contains legacy wrappers under `scripts/`; new
-documentation uses `.\.venv\Scripts\jev.exe` as the canonical Windows path.
-
-The default export is `artifacts/feedback/v0.3-feedback.jsonl`, one row per
-feedback session with nested Jev decisions. Treat it as reviewable evidence, not
-gold labels to append directly to the training split. See
-[`docs/FEEDBACK_LOOP.md`](docs/FEEDBACK_LOOP.md).
-
-## Integration API
-
-For new integrations, use the namespaced router so the product boundary is
-explicit and future API versions can be added without colliding with another
-service:
+The checked-in source rows are manually authored. The builder creates the
+JSONL splits and checks unique IDs, unique requests, action-label consistency,
+and balanced holdouts.
 
 ```bash
-curl -X POST http://127.0.0.1:8080/v1/jev-my-bro/decide \
-  -H "content-type: application/json" \
-  -d '{"context":"Deploy the payment service to production"}'
+python scripts/build_th_curated_960.py
+python scripts/validate_dataset.py --root data/th_curated_960
 ```
 
-The router also exposes:
+The split layout is:
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/v1/jev-my-bro/health` | Integration health check |
-| `POST` | `/v1/jev-my-bro/decide` | Governance decision using the default four questions |
-| `POST` | `/v1/jev-my-bro/predict` | Custom typed questions and state |
-| `POST` | `/v1/systemone` | TypeSafe-compatible typed decision wire format |
+| Split | Cases | Decisions | Purpose |
+| --- | ---: | ---: | --- |
+| Train | 960 | 3,840 | Fit model weights |
+| Validation | 100 | 400 | Select checkpoint |
+| Calibration | 100 | 400 | Fit temperature and score decoder |
+| Test | 100 | 400 | One locked final evaluation |
 
-The old `/health`, `/v1/decide`, and `/v1/predict` routes remain available for
-backward compatibility. The namespaced routes return `engine: jev-my-bro` so a
-caller can verify that it reached the intended service.
+On a Colab T4:
+
+```bash
+!python -m jevbro.train --config configs/colab-th960.yaml
+
+!python -m jevbro.calibrate \
+  --model artifacts/laya-th960 \
+  --data data/th_curated_960/calibration.jsonl \
+  --report artifacts/laya-th960/calibration-report.json
+
+!python -m jevbro.evaluate \
+  --model artifacts/laya-th960 \
+  --data data/th_curated_960/test.jsonl \
+  --device cuda \
+  --lock-decoder \
+  --report artifacts/laya-th960/test-report.json
+```
+
+`calibrate` refuses a path named `test.jsonl`. The `--lock-decoder` flag
+requires calibration provenance in `rl_agent_config.json`, including the
+calibration dataset hash, before evaluating test.
+
+## Architecture
+
+```text
+Thai/English request
+        |
+        v
+Laya multilingual encoder
+        |
+        v
+Typed heads: choice / noul / score
+        |
+        v
+RLCD + soft-target CE + ordinal/RPS score objectives
+        |
+        v
+Calibration split: temperatures + score decoder
+        |
+        v
+Native inference -> FastAPI -> optional MCP or Go gateway
+```
+
+The project uses Laya 0.3.4 with the `convaiinnovations/laya-multilingual`
+base checkpoint. Calibration is independent from validation and test. The
+test set is not used for training, temperature fitting, decoder selection, or
+threshold tuning.
+
+## Repository layout
+
+```text
+jevbro/                         shared inference, calibration, evaluation
+configs/colab-th960.yaml        reproducible T4 training config
+data/th_curated_960/            Thai 960-case JSONL splits and README
+scripts/build_th_curated_960.py dataset builder and integrity checks
+scripts/probe_real_requests.py  qualitative real-request probe
+docs/assets/laya-th960-results.svg  test-result visualization
+tests/                          unit, data, and workflow tests
+```
 
 ## Verification
 
 ```bash
-python scripts/validate_dataset.py --root data/hf_expanded
-python scripts/audit_hf_dataset.py --root data/hf_expanded
-python -m compileall -q jevbro scripts tests
+python scripts/validate_dataset.py --root data/th_curated_960
+python -m compileall -q jevbro scripts
 pytest -q
-cd server/go && go test ./...
 ```
 
-Actual training, calibration, evaluation, and GPU benchmark runs require a
-GPU-capable environment such as Google Colab.
+The latest repository verification passed with **62 tests**. GPU training and
+the final laya-th960 metrics were run in Google Colab; they are not reproduced
+by the local test suite.
 
-## Upstream and license
+## Limitations and safety
 
-jev-my-bro project code and project-authored bootstrap data are licensed under
-**Apache License 2.0**; see [`LICENSE`](LICENSE). Laya is also an Apache-2.0
-dependency; see [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md).
+- The Thai 960-case set is manually curated development data, not a complete
+  production authorization policy.
+- The test report is a benchmark on this held-out set, not proof of safety on
+  unseen organizations or domains.
+- Risk 1 and risk 3 remain the weakest per-level recall slices.
+- Keep an independent policy layer, explicit approvals, human escalation,
+  audit logs, and outcome feedback around the model.
+- Never put Hugging Face tokens, private keys, or production credentials in
+  this repository or a notebook.
 
-The active dataset is mixed-source: MASSIVE Thai rows record CC BY 4.0,
-BANKING77 rows record MIT, while Hermes function-calling rows and the 1,008
-project-authored bootstrap rows are Apache-2.0. The repository Apache license
-does not override upstream dataset terms. See
-[`data/hf_expanded/README.md`](data/hf_expanded/README.md),
-[`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md), and
-[`data/hf_expanded/SOURCE_MANIFEST.json`](data/hf_expanded/SOURCE_MANIFEST.json)
-before redistributing derived artifacts.
+## License
 
-## Status
-
-The published v0.2 release establishes the Laya training/serving path and real
-Colab checkpoint. Current development adds Score v4 ordinal targets/losses,
-the 8,508-case provenance-aware dataset, richer ordinal evaluation, and MCP
-task feedback. The next model-quality milestone is human review of the
-8,508-case dataset followed by a fresh full train/calibration/test run.
-
-Documentation index: [`docs/README.md`](docs/README.md).
+Project code and project-authored data are licensed under the Apache License
+2.0; see [`LICENSE`](LICENSE). Laya is also Apache-2.0. Review
+[`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md) before redistributing datasets or
+derived artifacts.
