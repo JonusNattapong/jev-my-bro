@@ -24,7 +24,7 @@ The latest manually curated Thai experiment is `laya-th960`:
 - Selected checkpoint: epoch 5, selected from validation
 - Test decoder: threshold, selected from calibration only
 
-![laya-th960 test results](docs/assets/laya-th960-results.svg)
+![laya-th960 benchmark](docs/assets/laya-th960-benchmark.svg)
 
 ### Final locked test result
 
@@ -247,7 +247,7 @@ configs/colab-th960.yaml        reproducible T4 training config
 data/th_curated_960/            Thai 960-case JSONL splits and README
 scripts/build_th_curated_960.py dataset builder and integrity checks
 scripts/probe_real_requests.py  qualitative real-request probe
-docs/assets/laya-th960-results.svg  test-result visualization
+docs/assets/laya-th960-benchmark.svg  final locked benchmark visualization
 tests/                          unit, data, and workflow tests
 ```
 

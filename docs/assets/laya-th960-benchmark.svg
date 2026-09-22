@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Jev laya-th960 benchmark</title>
+  <desc id="desc">Final locked test benchmark on 100 Thai cases and 400 typed decisions. Decoder selected from calibration only.</desc>
+  <style>
+    .bg { fill: #0b1020; }
+    .panel { fill: #111a2e; stroke: #263653; stroke-width: 1; }
+    .title { fill: #f8fafc; font: 700 30px Arial, sans-serif; }
+    .subtitle { fill: #a8b6ce; font: 16px Arial, sans-serif; }
+    .label { fill: #a8b6ce; font: 14px Arial, sans-serif; }
+    .value { fill: #f8fafc; font: 700 27px Arial, sans-serif; }
+    .small { fill: #94a3b8; font: 13px Arial, sans-serif; }
+    .bar-bg { fill: #25334f; }
+    .bar-teal { fill: #5eead4; }
+    .bar-blue { fill: #60a5fa; }
+    .grid { stroke: #33445f; stroke-width: 1; }
+    .number { fill: #dbeafe; font: 700 14px Arial, sans-serif; text-anchor: end; }
+  </style>
+
+  <rect class="bg" width="1200" height="720" rx="20"/>
+  <text class="title" x="48" y="58">Jev laya-th960 — benchmark</text>
+  <text class="subtitle" x="48" y="88">Final locked test · 100 Thai cases · 400 typed decisions · decoder selected from calibration only</text>
+
+  <rect class="panel" x="48" y="120" width="250" height="112" rx="14"/>
+  <text class="label" x="72" y="153">Overall accuracy</text>
+  <text class="value" x="72" y="195">88.0%</text>
+  <text class="small" x="190" y="195">400 decisions</text>
+
+  <rect class="panel" x="318" y="120" width="250" height="112" rx="14"/>
+  <text class="label" x="342" y="153">Score macro recall</text>
+  <text class="value" x="342" y="195">0.780</text>
+  <text class="small" x="455" y="195">selected decoder</text>
+
+  <rect class="panel" x="588" y="120" width="250" height="112" rx="14"/>
+  <text class="label" x="612" y="153">Score QWK</text>
+  <text class="value" x="612" y="195">0.915</text>
+  <text class="small" x="735" y="195">ordinal agreement</text>
+
+  <rect class="panel" x="858" y="120" width="294" height="112" rx="14"/>
+  <text class="label" x="882" y="153">Within-one accuracy</text>
+  <text class="value" x="882" y="195">96.0%</text>
+  <text class="small" x="1020" y="195">score levels</text>
+
+  <rect class="panel" x="48" y="258" width="530" height="282" rx="14"/>
+  <text class="label" x="72" y="294">Accuracy by primitive</text>
+  <text class="small" x="72" y="335">choice</text>
+  <rect class="bar-bg" x="160" y="318" width="350" height="22" rx="11"/>
+  <rect class="bar-teal" x="160" y="318" width="311.5" height="22" rx="11"/>
+  <text class="number" x="548" y="335">89.0%</text>
+  <text class="small" x="72" y="415">score</text>
+  <rect class="bar-bg" x="160" y="398" width="350" height="22" rx="11"/>
+  <rect class="bar-blue" x="160" y="398" width="273" height="22" rx="11"/>
+  <text class="number" x="548" y="415">78.0%</text>
+  <text class="small" x="72" y="495">noul</text>
+  <rect class="bar-bg" x="160" y="478" width="350" height="22" rx="11"/>
+  <rect class="bar-teal" x="160" y="478" width="323.75" height="22" rx="11"/>
+  <text class="number" x="548" y="495">92.5%</text>
+
+  <rect class="panel" x="598" y="258" width="554" height="282" rx="14"/>
+  <text class="label" x="622" y="294">Score recall by risk level</text>
+  <text class="small" x="622" y="335">risk 0</text>
+  <rect class="bar-bg" x="710" y="318" width="350" height="22" rx="11"/>
+  <rect class="bar-teal" x="710" y="318" width="297.5" height="22" rx="11"/>
+  <text class="number" x="1128" y="335">85%</text>
+  <text class="small" x="622" y="383">risk 1</text>
+  <rect class="bar-bg" x="710" y="366" width="350" height="22" rx="11"/>
+  <rect class="bar-blue" x="710" y="366" width="210" height="22" rx="11"/>
+  <text class="number" x="1128" y="383">60%</text>
+  <text class="small" x="622" y="431">risk 2</text>
+  <rect class="bar-bg" x="710" y="414" width="350" height="22" rx="11"/>
+  <rect class="bar-teal" x="710" y="414" width="315" height="22" rx="11"/>
+  <text class="number" x="1128" y="431">90%</text>
+  <text class="small" x="622" y="479">risk 3</text>
+  <rect class="bar-bg" x="710" y="462" width="350" height="22" rx="11"/>
+  <rect class="bar-blue" x="710" y="462" width="227.5" height="22" rx="11"/>
+  <text class="number" x="1128" y="479">65%</text>
+  <text class="small" x="622" y="527">risk 4</text>
+  <rect class="bar-bg" x="710" y="510" width="350" height="22" rx="11"/>
+  <rect class="bar-teal" x="710" y="510" width="315" height="22" rx="11"/>
+  <text class="number" x="1128" y="527">90%</text>
+
+  <rect class="panel" x="48" y="566" width="1104" height="106" rx="14"/>
+  <text class="label" x="72" y="600">Calibration and score error</text>
+  <text class="small" x="72" y="634">ECE</text><text class="value" x="125" y="638">0.139</text>
+  <text class="small" x="315" y="634">NLL</text><text class="value" x="365" y="638">0.654</text>
+  <text class="small" x="545" y="634">Brier</text><text class="value" x="615" y="638">0.116</text>
+  <text class="small" x="790" y="634">Expected MAE</text><text class="value" x="955" y="638">0.352</text>
+  <line class="grid" x1="72" y1="651" x2="1128" y2="651"/>
+  <text class="small" x="72" y="665">threshold decoder · calibration_only · test split not used for selection</text>
+</svg>
