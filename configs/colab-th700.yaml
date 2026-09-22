@@ -1,0 +1,23 @@
+# Thai 700-case score-disambiguation training run.
+train: data/th_curated_700/train.jsonl
+validation: data/th_curated_700/validation.jsonl
+base_model: convaiinnovations/laya-multilingual
+output: artifacts/laya-th700
+epochs: 6
+micro_batch: 4
+grad_accum: 8
+group_size: 4
+checkpoint_each_epoch: true
+english_weight: 1.0
+choice_weight: 1.5
+score_weight: 2.5
+score_ce_weight: 0.5
+score_rps_weight: 1.0
+score_class_balance_beta: 0.995
+score_cumulative_weight: 1.0
+encoder_lr: 0.00002
+head_lr: 0.0001
+sigma_start: 0.4
+sigma_end: 0.1
+seed: 42
+device: cuda
