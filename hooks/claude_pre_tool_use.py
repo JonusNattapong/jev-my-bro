@@ -12,16 +12,20 @@ Returns permissionDecision via stdout JSON for Claude Code.
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
+import socket
 import sys
 import urllib.error
 import urllib.request
 from typing import Any
 
 JEV_MCP_URL = os.environ.get("JEV_MCP_URL", "http://127.0.0.1:8787/mcp")
-JEV_TIMEOUT = float(os.environ.get("JEV_TIMEOUT", "5.0"))
-JEV_FAIL_MODE = os.environ.get("JEV_FAIL_MODE", "open")  # "open" or "deny"
+JEV_TIMEOUT = float(os.environ.get("JEV_TIMEOUT", "8.0"))
+JEV_RETRY_TIMEOUT = float(os.environ.get("JEV_RETRY_TIMEOUT", "3.0"))
+JEV_FAIL_MODE = os.environ.get("JEV_FAIL_MODE", "open")  # "open", "deny", or "ask"
+JEV_FALLBACK_LOG = os.environ.get("JEV_FALLBACK_LOG", "artifacts/feedback/hook_fallback.log")
 
 
 def extract_context(tool_name: str, tool_input: dict[str, Any]) -> str:
@@ -61,8 +65,39 @@ def extract_context(tool_name: str, tool_input: dict[str, Any]) -> str:
     return f"Execute {tool_name}"
 
 
-def query_jev_remote(context: str) -> dict[str, Any] | None:
-    """Call Jev MCP server via HTTP JSON-RPC with configurable timeout."""
+def _write_fallback_log(context: str, error_kind: str) -> None:
+    """Append one JSON line recording why the hook fell back to local rules.
+
+    Logging failures are swallowed on purpose: the audit trail must never be
+    able to crash or block a governance decision.
+    """
+    if not JEV_FALLBACK_LOG:
+        return
+    try:
+        entry = {
+            "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "error_kind": error_kind,
+            "fail_mode": JEV_FAIL_MODE,
+            "context": context[:200],
+        }
+        log_path = JEV_FALLBACK_LOG
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def query_jev_remote(context: str, timeout: float) -> tuple[dict[str, Any] | None, str]:
+    """Call Jev MCP server via HTTP JSON-RPC.
+
+    Returns (decision, error_kind). error_kind is "" on success, otherwise
+    one of "timeout", "connection_error", or "unknown_error" so the caller
+    can decide whether a retry is worthwhile and so failures are logged with
+    an accurate cause instead of a blanket except.
+    """
     payload = {
         "jsonrpc": "2.0",
         "id": "hook-query-1",
@@ -82,15 +117,21 @@ def query_jev_remote(context: str) -> dict[str, Any] | None:
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=JEV_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if "result" in data and "content" in data["result"]:
                 for item in data["result"]["content"]:
                     if item.get("type") == "text":
-                        return json.loads(item["text"])
-            return data.get("result")
+                        return json.loads(item["text"]), ""
+            return data.get("result"), ""
+    except socket.timeout:
+        return None, "timeout"
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, socket.timeout):
+            return None, "timeout"
+        return None, "connection_error"
     except Exception:
-        return None
+        return None, "unknown_error"
 
 
 def query_jev_local_fallback(context: str) -> dict[str, Any]:
@@ -121,10 +162,21 @@ def query_jev_local_fallback(context: str) -> dict[str, Any]:
 
 
 def evaluate_action(context: str) -> dict[str, Any]:
-    """Evaluate context through Jev server, falling back to local rules."""
-    decision = query_jev_remote(context)
+    """Evaluate context through Jev server, with one bounded retry on timeout,
+    falling back to local rules only after both attempts fail.
+    """
+    decision, error_kind = query_jev_remote(context, JEV_TIMEOUT)
+
+    if decision is None and error_kind == "timeout":
+        # A single retry with a shorter budget: recovers from a transient
+        # queue spike (common under concurrent agent sessions) without
+        # doubling the worst-case wait on a genuinely offline server.
+        decision, error_kind = query_jev_remote(context, JEV_RETRY_TIMEOUT)
+
     if decision is None:
+        _write_fallback_log(context, error_kind or "unknown_error")
         decision = query_jev_local_fallback(context)
+
     return decision
 
 
