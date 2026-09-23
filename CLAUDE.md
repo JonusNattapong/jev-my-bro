@@ -18,3 +18,20 @@ If the task is blocked or fails, call `jev_task_fail` instead. Use null for
 
 Do not use Jev as a code generator or as a replacement for tests, verification,
 or approval boundaries.
+
+## Running the Jev server
+
+The `jev` MCP server (`http://127.0.0.1:8787/mcp`) must be running before the
+session starts. If `jev` fails to connect, start it and reconnect with `/mcp`:
+
+```powershell
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --host 127.0.0.1 --port 8787
+```
+
+## Language
+
+The active model (`jev-my-bro-th960`) was trained on Thai data only. Write the
+`context` for `jev_task_start` and `jev_decide` in Thai and pass
+`language="th"`. English context gives less reliable decisions; in a smoke
+test an English force-push request was classified `execute` while the Thai
+equivalent was classified `ask_user`.

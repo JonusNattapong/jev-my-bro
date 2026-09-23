@@ -13,10 +13,15 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m pip install -e . --no-deps
 
-.\.venv\Scripts\jev.exe serve --model .\artifacts\laya-model --host 127.0.0.1 --port 8787
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --host 127.0.0.1 --port 8787
 ```
 
-`.\artifacts\laya-model` is the current local checkpoint directory and contains
+`--model` accepts a Hugging Face model ID or a local checkpoint directory. The
+recommended model is `JonusNattapong/jev-my-bro-th960`; it is downloaded to the
+Hugging Face cache on first start. It was trained on Thai data only, so agents
+should send decision `context` in Thai with `language="th"`.
+
+The older local checkpoint `.\artifacts\laya-model` also works and contains
 `model.safetensors`, `rl_agent_config.json`, `encoder\`, and `tokenizer\`.
 Directories such as `artifacts\v41` contain evaluation reports only and are not
 valid values for `--model`.
@@ -104,7 +109,7 @@ See [`FEEDBACK_LOOP.md`](FEEDBACK_LOOP.md) for CLI/evaluation/export details.
 ## STDIO alternative
 
 ```powershell
-.\.venv\Scripts\jev.exe serve --model .\artifacts\laya-model --transport stdio
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --transport stdio
 ```
 
 Do not run three separate stdio instances for three coding agents on a
