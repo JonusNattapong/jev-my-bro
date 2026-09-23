@@ -105,27 +105,16 @@ def test_hard_allow_safe_read_only_commands() -> None:
     assert m4.rule_id == "hard_allow_local_code_inspection"
 
 
-def test_hard_allow_safe_file_write() -> None:
-    # Ordinary source file write/edit should fast-path allow
-    m1 = evaluate_rules("Write file myconfig.py (~0.5KB)")
-    assert m1 is not None
-    assert m1.action == "execute"
-    assert m1.rule_id == "hard_allow_safe_file_write"
-
-    m2 = evaluate_rules("Edit file jevbro/core.py (replacing ~1.2KB)")
-    assert m2 is not None
-    assert m2.action == "execute"
-    assert m2.rule_id == "hard_allow_safe_file_write"
-
-    # Sensitive paths must NOT be fast-path allowed (falls through to Layer 2)
-    m3 = evaluate_rules("Write file .env (~0.1KB)")
-    assert m3 is None
-
-    m4 = evaluate_rules("Write file secrets/aws_credential.json (~2KB)")
-    assert m4 is None
-
-    m5 = evaluate_rules("Edit file ~/.ssh/id_rsa (replacing ~0.0KB)")
-    assert m5 is None
+def test_file_write_and_edit_have_no_fast_path_allow() -> None:
+    # Write/Edit must NOT be hard-allowed by a denylist: a denylist over a free-form
+    # display string is unanchored (no path resolution) and cannot enumerate every
+    # sensitive location. All Write/Edit contexts fall through to Layer 2 scoring,
+    # ordinary files included, so the ML model always renders a verdict for writes.
+    assert evaluate_rules("Write file myconfig.py (~0.5KB)") is None
+    assert evaluate_rules("Edit file jevbro/core.py (replacing ~1.2KB)") is None
+    assert evaluate_rules("Write file .env (~0.1KB)") is None
+    assert evaluate_rules("Write file secrets/aws_credential.json (~2KB)") is None
+    assert evaluate_rules("Edit file ~/.ssh/id_rsa (replacing ~0.0KB)") is None
 
 
 def test_mutation_disqualifies_hard_allow() -> None:

@@ -108,16 +108,6 @@ DEFAULT_ALLOW_READONLY_RULES: list[tuple[str, re.Pattern, str]] = [
         ),
         "Read-only code inspection and search.",
     ),
-    (
-        "hard_allow_safe_file_write",
-        re.compile(
-            r"^(Write file|Edit file)\s+(?!.*(\.env\b|secret|credential|password|\.ssh[/\\]|"
-            r"id_rsa|id_ed25519|private.?key|\.pem\b|\.aws[/\\]|/etc/|/usr/|system32|"
-            r"\.git[/\\]hooks)).+",
-            flags=re.IGNORECASE,
-        ),
-        "Safe file write or edit on a non-sensitive path.",
-    ),
 ]
 
 # Words that indicate state changes or destructive side-effects that disqualify from Hard Allow
