@@ -66,30 +66,61 @@ class SystemOneRequest(BaseModel):
 class DecideRequest(BaseModel):
     context: str = Field(min_length=1, max_length=20000)
     language: str | None = None
+    prohibited_threshold: float | None = None
+    review_threshold: float | None = None
 
 
-GATE_THRESHOLD = 0.5
+REVIEW_THRESHOLD = 0.5
+PROHIBITED_REJECT_THRESHOLD = 0.7
+HIGH_RISK_THRESHOLD = 3.0
 
 
-def gate_decision(action: str, needs_review: float, prohibited: float) -> str:
-    """Combine the raw signals so a prohibited or review signal cannot be outvoted by action.
+def gate_decision(
+    action: str,
+    needs_review: float,
+    prohibited: float,
+    *,
+    risk: float | None = None,
+    review_threshold: float = REVIEW_THRESHOLD,
+    prohibited_threshold: float = PROHIBITED_REJECT_THRESHOLD,
+    high_risk_threshold: float = HIGH_RISK_THRESHOLD,
+) -> str:
+    """Combine raw signals while separating review uncertainty from prohibition.
 
     The raw action head is trained to agree with the noul heads, but nothing enforces that
-    at inference time; this gate is the policy documented in the README.
+    at inference time. A prohibited score from review_threshold to prohibited_threshold is
+    treated as uncertainty and escalated for review; only a calibrated high prohibited score
+    (prohibited >= prohibited_threshold) or an explicit reject action is an automatic reject.
+    High operational risk (risk >= high_risk_threshold) is also escalated to ask_user.
     """
-    if prohibited >= GATE_THRESHOLD or action == "reject":
+    if prohibited >= prohibited_threshold or action == "reject":
         return "reject"
-    if needs_review >= GATE_THRESHOLD or action == "ask_user":
+    if (
+        needs_review >= review_threshold
+        or action == "ask_user"
+        or prohibited >= review_threshold
+        or (risk is not None and risk >= high_risk_threshold)
+    ):
         return "ask_user"
     return "execute"
 
 
-def decision_response(agent, request: DecideRequest) -> dict:
+def decision_response(
+    agent,
+    request: DecideRequest,
+    *,
+    review_threshold: float | None = None,
+    prohibited_threshold: float | None = None,
+    high_risk_threshold: float = HIGH_RISK_THRESHOLD,
+) -> dict:
     language = request.language or detect_question_language(request.context)
     questions = default_questions(language)
     result = agent.predict({"request": request.context}, questions)
     answers = result["answers"]
     action = answers["action"]
+    risk_score = float(answers["risk"]["score"])
+    r_thresh = review_threshold if review_threshold is not None else (request.review_threshold or REVIEW_THRESHOLD)
+    p_thresh = prohibited_threshold if prohibited_threshold is not None else (request.prohibited_threshold or PROHIBITED_REJECT_THRESHOLD)
     return {
         "engine": "jev-my-bro",
         "decision": action["choice"],
@@ -101,6 +132,10 @@ def decision_response(agent, request: DecideRequest) -> dict:
             action["choice"],
             float(answers["needs_review"]["noul"]),
             float(answers["prohibited"]["noul"]),
+            risk=risk_score,
+            review_threshold=r_thresh,
+            prohibited_threshold=p_thresh,
+            high_risk_threshold=high_risk_threshold,
         ),
         "answers": answers,
         "usage": result.get("usage", {}),

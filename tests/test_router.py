@@ -116,8 +116,16 @@ def test_typesafe_systemone_maps_laya_rubric_budget_error_to_422() -> None:
 
 def test_gate_decision_prioritizes_prohibited_over_action() -> None:
     assert gate_decision("execute", needs_review=0.1, prohibited=0.9) == "reject"
-    assert gate_decision("ask_user", needs_review=0.9, prohibited=0.5) == "reject"
+    assert gate_decision("ask_user", needs_review=0.9, prohibited=0.7) == "reject"
     assert gate_decision("reject", needs_review=0.0, prohibited=0.0) == "reject"
+
+
+def test_gate_decision_routes_medium_prohibited_scores_to_review() -> None:
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.5) == "ask_user"
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.69) == "ask_user"
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.7) == "reject"
+
+
 
 
 def test_gate_decision_escalates_review_and_passes_clean_execute() -> None:
@@ -143,3 +151,33 @@ def test_decide_reports_gated_decision_without_changing_raw_decision() -> None:
     body = client.post("/v1/jev-my-bro/decide", json={"context": "Disable audit logging"}).json()
     assert body["decision"] == "execute"
     assert body["gated_decision"] == "reject"
+
+
+def test_gate_decision_escalates_high_operational_risk_to_ask_user() -> None:
+    # High risk (>= 3.0) escalates clean execute to ask_user
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.1, risk=3.0) == "ask_user"
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.1, risk=4.0) == "ask_user"
+    # Moderate or low risk (< 3.0) does not trigger risk escalation
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.1, risk=2.9) == "execute"
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.1, risk=0.0) == "execute"
+    # But prohibited score still takes precedence
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.8, risk=4.0) == "reject"
+
+
+def test_gate_decision_supports_custom_thresholds() -> None:
+    # Custom prohibited threshold
+    assert (
+        gate_decision("execute", needs_review=0.1, prohibited=0.65, prohibited_threshold=0.60)
+        == "reject"
+    )
+    # Custom review threshold
+    assert (
+        gate_decision(
+            "execute",
+            needs_review=0.4,
+            prohibited=0.4,
+            review_threshold=0.6,
+            prohibited_threshold=0.8,
+        )
+        == "execute"
+    )
