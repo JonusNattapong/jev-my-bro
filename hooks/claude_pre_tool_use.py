@@ -139,11 +139,17 @@ def encode_permission_decision(
     }
     permission = decision_map.get(decision, "allow")
 
+    # Always surface the evaluated context so the reason is actionable, not just a verdict.
+    if reason:
+        reason_str = f"[{engine}] Risk={risk:.1f}/4 | {reason} | context: {context[:80]}"
+    else:
+        reason_str = f"[{engine}] {permission} | context: {context[:80]}"
+
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": permission,
-            "permissionDecisionReason": f"[{engine}] Risk={risk:.1f}/4 | {reason}" if reason else f"[{engine}] {permission}",
+            "permissionDecisionReason": reason_str,
             "context": context[:150],
         }
     }

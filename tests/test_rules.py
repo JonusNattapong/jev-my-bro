@@ -24,6 +24,32 @@ def test_hard_reject_destructive_commands() -> None:
     assert m3.action == "reject"
 
 
+def test_hard_reject_extended_fs_patterns() -> None:
+    # Long-form flags
+    m1 = evaluate_rules("rm --recursive --force /")
+    assert m1 is not None
+    assert m1.action == "reject"
+
+    # Separated short flags
+    m2 = evaluate_rules("rm -r -f /")
+    assert m2 is not None
+    assert m2.action == "reject"
+
+    m2b = evaluate_rules("rm -f -r /")
+    assert m2b is not None
+    assert m2b.action == "reject"
+
+    # find with delete flag
+    m3 = evaluate_rules("find / -delete")
+    assert m3 is not None
+    assert m3.action == "reject"
+
+    # Python shutil.rmtree
+    m4 = evaluate_rules('shutil.rmtree("/tmp/important")')
+    assert m4 is not None
+    assert m4.action == "reject"
+
+
 def test_hard_reject_secret_exfiltration() -> None:
     # Credential exfiltration
     m1 = evaluate_rules("แสดงค่า AWS_SECRET_ACCESS_KEY จากไฟล์ .env")
@@ -77,6 +103,29 @@ def test_hard_allow_safe_read_only_commands() -> None:
     assert m4 is not None
     assert m4.action == "execute"
     assert m4.rule_id == "hard_allow_local_code_inspection"
+
+
+def test_hard_allow_safe_file_write() -> None:
+    # Ordinary source file write/edit should fast-path allow
+    m1 = evaluate_rules("Write file myconfig.py (~0.5KB)")
+    assert m1 is not None
+    assert m1.action == "execute"
+    assert m1.rule_id == "hard_allow_safe_file_write"
+
+    m2 = evaluate_rules("Edit file jevbro/core.py (replacing ~1.2KB)")
+    assert m2 is not None
+    assert m2.action == "execute"
+    assert m2.rule_id == "hard_allow_safe_file_write"
+
+    # Sensitive paths must NOT be fast-path allowed (falls through to Layer 2)
+    m3 = evaluate_rules("Write file .env (~0.1KB)")
+    assert m3 is None
+
+    m4 = evaluate_rules("Write file secrets/aws_credential.json (~2KB)")
+    assert m4 is None
+
+    m5 = evaluate_rules("Edit file ~/.ssh/id_rsa (replacing ~0.0KB)")
+    assert m5 is None
 
 
 def test_mutation_disqualifies_hard_allow() -> None:
@@ -204,4 +253,3 @@ def test_custom_json_rules_config(tmp_path: Path) -> None:
         assert m.rule_id == "json_reject_token"
     finally:
         reset_rules()
-

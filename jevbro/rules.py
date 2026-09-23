@@ -40,7 +40,7 @@ DEFAULT_REJECT_RULES: list[tuple[str, re.Pattern, str]] = [
         "hard_reject_fs_extended",
         re.compile(
             r"\brm\s+(-r\s+-f|-f\s+-r)\s+/|"
-            r"\brm\s+(--recursive|--force)\s+/|"
+            r"\brm\s+(--recursive\s+--force|--force\s+--recursive|--recursive|--force)\s+/|"
             r"\bfind\s+/.*?-delete\b|"
             r"shutil\.rmtree",
             flags=re.IGNORECASE,
@@ -107,6 +107,16 @@ DEFAULT_ALLOW_READONLY_RULES: list[tuple[str, re.Pattern, str]] = [
             flags=re.IGNORECASE,
         ),
         "Read-only code inspection and search.",
+    ),
+    (
+        "hard_allow_safe_file_write",
+        re.compile(
+            r"^(Write file|Edit file)\s+(?!.*(\.env\b|secret|credential|password|\.ssh[/\\]|"
+            r"id_rsa|id_ed25519|private.?key|\.pem\b|\.aws[/\\]|/etc/|/usr/|system32|"
+            r"\.git[/\\]hooks)).+",
+            flags=re.IGNORECASE,
+        ),
+        "Safe file write or edit on a non-sensitive path.",
     ),
 ]
 

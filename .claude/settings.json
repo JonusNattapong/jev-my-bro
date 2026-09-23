@@ -15,7 +15,7 @@
               },
     "environment":  {
                         "JEV_TIMEOUT":  "5.0",
-                        "JEV_FAIL_MODE":  "deny",
+                        "JEV_FAIL_MODE":  "open",
                         "JEV_MCP_URL":  "http://127.0.0.1:8787/mcp"
                     }
 }
