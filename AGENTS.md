@@ -22,6 +22,7 @@ jev-my-bro is a self-hosted typed decision model specialized for agent/tool gove
 - Use `jev_decide` for bounded operational/governance choices where an independent learned signal is useful.
 - Jev is advisory and must not override repository policy, explicit approvals, tests, or safety boundaries.
 - If Jev returns `abstain: true`, rely on stronger evidence, policy, or human review rather than its raw decision.
+- Check `gated_decision` as well as `decision`. It applies `prohibited >= 0.5` (reject) and `needs_review >= 0.5` (ask_user) over the raw action and is present even when Jev abstains. Treat `reject` or `ask_user` as a signal to obtain explicit human approval before outward-facing or hard-to-reverse actions.
 - Do not use Jev as a code generator; the coding agent remains responsible for implementation and verification.
 - For every non-trivial coding task, call `jev_task_start` before implementation and preserve its `task_id`.
 - Pass that `task_id` to any additional `jev_decide` calls made during the task; one task may have multiple Jev decisions.

@@ -68,6 +68,22 @@ class DecideRequest(BaseModel):
     language: str | None = None
 
 
+GATE_THRESHOLD = 0.5
+
+
+def gate_decision(action: str, needs_review: float, prohibited: float) -> str:
+    """Combine the raw signals so a prohibited or review signal cannot be outvoted by action.
+
+    The raw action head is trained to agree with the noul heads, but nothing enforces that
+    at inference time; this gate is the policy documented in the README.
+    """
+    if prohibited >= GATE_THRESHOLD or action == "reject":
+        return "reject"
+    if needs_review >= GATE_THRESHOLD or action == "ask_user":
+        return "ask_user"
+    return "execute"
+
+
 def decision_response(agent, request: DecideRequest) -> dict:
     language = request.language or detect_question_language(request.context)
     questions = default_questions(language)
@@ -81,6 +97,11 @@ def decision_response(agent, request: DecideRequest) -> dict:
         "needs_review": answers["needs_review"]["noul"],
         "prohibited": answers["prohibited"]["noul"],
         "risk": answers["risk"]["score"],
+        "gated_decision": gate_decision(
+            action["choice"],
+            float(answers["needs_review"]["noul"]),
+            float(answers["prohibited"]["noul"]),
+        ),
         "answers": answers,
         "usage": result.get("usage", {}),
     }

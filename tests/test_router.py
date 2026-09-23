@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from jevbro.router import gate_decision
 from jevbro.serve import create_app
 
 
@@ -111,3 +112,34 @@ def test_typesafe_systemone_maps_laya_rubric_budget_error_to_422() -> None:
 
     assert response.status_code == 422
     assert "head_max_len" in response.json()["detail"]
+
+
+def test_gate_decision_prioritizes_prohibited_over_action() -> None:
+    assert gate_decision("execute", needs_review=0.1, prohibited=0.9) == "reject"
+    assert gate_decision("ask_user", needs_review=0.9, prohibited=0.5) == "reject"
+    assert gate_decision("reject", needs_review=0.0, prohibited=0.0) == "reject"
+
+
+def test_gate_decision_escalates_review_and_passes_clean_execute() -> None:
+    assert gate_decision("execute", needs_review=0.7, prohibited=0.2) == "ask_user"
+    assert gate_decision("ask_user", needs_review=0.1, prohibited=0.1) == "ask_user"
+    assert gate_decision("execute", needs_review=0.49, prohibited=0.49) == "execute"
+
+
+def test_decide_reports_gated_decision_without_changing_raw_decision() -> None:
+    class ConflictingAgent:
+        def predict(self, state, questions):
+            return {
+                "answers": {
+                    "action": {"choice": "execute", "confidence": 0.95},
+                    "needs_review": {"noul": 0.2},
+                    "prohibited": {"noul": 0.9},
+                    "risk": {"score": 4.0},
+                },
+                "usage": {},
+            }
+
+    client = TestClient(create_app(ConflictingAgent()))
+    body = client.post("/v1/jev-my-bro/decide", json={"context": "Disable audit logging"}).json()
+    assert body["decision"] == "execute"
+    assert body["gated_decision"] == "reject"

@@ -197,6 +197,7 @@ class JevCore:
             "agent_model": session.get("agent_model"),
             "decision": result["decision"],
             "raw_decision": result["raw_decision"],
+            "gated_decision": result["gated_decision"],
             "confidence": result["confidence"],
             "abstain": result["abstain"],
             "needs_review": result.get("needs_review"),

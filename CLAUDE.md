@@ -10,7 +10,13 @@ stronger evidence, or human review instead of the raw model decision.
 
 For each non-trivial coding task, call `jev_task_start` with
 `source_agent="claude_code"` before implementation and keep the returned
-`task_id`. Pass that id to any additional `jev_decide` calls. Implement and
+`task_id`. Pass that id to any additional `jev_decide` calls.
+
+Read `gated_decision`, not only `decision`. `decision` comes from the action
+head alone; `gated_decision` also applies the `prohibited` and `needs_review`
+signals (`>= 0.5`) and is computed even when Jev abstains. If it is `reject` or
+`ask_user`, get explicit user approval before any outward-facing or
+hard-to-reverse action; an explicit user instruction for that action counts. Implement and
 run tests with normal Claude Code tools. Before giving the final task response,
 call `jev_task_complete` with the final choice and actual verification evidence.
 If the task is blocked or fails, call `jev_task_fail` instead. Use null for

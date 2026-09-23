@@ -70,6 +70,7 @@ def test_task_lifecycle_start_decide_complete_and_list(tmp_path: Path) -> None:
             assert task["status"] == "running"
             assert task["decision_id"].startswith("jev-")
             assert task["source_agent"] == "claude_code"
+            assert task["gated_decision"] == "ask_user"
 
             extra = await client.call_tool(
                 "jev_decide",
