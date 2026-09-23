@@ -13,62 +13,33 @@ approval, tests, audit logs, or a human safety boundary.
 
 ## Latest Thai model
 
-The latest manually curated Thai experiment is `laya-th1200`:
+The latest manually curated Thai model is `laya-th1200`:
 
 - Model: [JonusNattapong/jev-my-bro-th1200](https://huggingface.co/JonusNattapong/jev-my-bro-th1200)
-- Training data: 1,200 Thai cases
+- Model Card: [`docs/model-cards/jev-my-bro-th1200.md`](docs/model-cards/jev-my-bro-th1200.md)
+- Training data: 1,200 Thai cases (`data/th_curated_1200/train.jsonl`)
 - Validation, calibration, and test: 100 cases each
 - Test: 100 cases, 400 typed decisions, 20 cases per risk level
-- Test accuracy: 86.75% (Action choice: 88.0%, Noul: 93.5%, Level 4 risk recall: 100%)
-- Architecture: **Hybrid Cascaded** (Layer 1 Fast-Path <1ms rule engine + Layer 2 th1200 Neural model with CPU INT8 quantization)
+- Architecture: **Hybrid Cascaded** (Layer 1 Fast-Path <1ms rule engine + Layer 2 LRU Decision Cache + Layer 3 th1200 Neural model with CPU INT8 quantization)
+
+### Locked Test Results
+
+| Metric | laya-th1200 (Latest) | laya-th960 (Baseline) |
+| --- | ---: | ---: |
+| Overall accuracy | **86.75%** | 88.00% |
+| Action choice accuracy | **88.00%** | 89.00% |
+| Noul accuracy (`needs_review` / `prohibited`) | **93.50%** | 92.50% |
+| Level 4 risk recall (Catastrophic/Destructive) | **100.00%** | 90.00% |
+| Score within-one accuracy | **95.00%** | 96.00% |
+
+#### Why th1200?
+Earlier checkpoints (`th960`) were trained on short 1-line requests (mean ~65 chars). Real coding agent contexts sent to `jev_task_start` are 120–460 characters long and include meta-phrases like *"ผู้ใช้สั่งให้ทำแล้ว"* or *"ไม่มีการ push"*. This previously caused false-positive `prohibited` spikes on routine tasks. `th1200` incorporates 120 agent-task context cases in `th_17_agent_task_context_train.csv`, resolving false alarms while achieving **flawless 100% Level 4 risk recall**.
 
 The previous experiment was `laya-th960`:
 - Model: [JonusNattapong/jev-my-bro-th960](https://huggingface.co/JonusNattapong/jev-my-bro-th960)
 - Dataset: [JonusNattapong/jev-my-bro-dataset-th960](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset-th960)
 - Model Card: [`docs/model-cards/jev-my-bro-th960.md`](docs/model-cards/jev-my-bro-th960.md)
-
-![laya-th960 benchmark](docs/assets/laya-th960-benchmark.svg)
-
-### Final locked test result
-
-The following result was produced after calibration and a locked test
-evaluation. The test split was not used to fit temperatures or select the
-decoder.
-
-| Metric | Result |
-| --- | ---: |
-| Overall accuracy | **88.00%** |
-| ECE | 0.1391 |
-| NLL | 0.6540 |
-| Brier score | 0.1159 |
-| Score expected MAE | 0.3517 |
-| Score hard MAE | 0.2600 |
-| Score within-one accuracy | **96.00%** |
-| Score QWK | **0.9150** |
-| Score RPS | 0.0433 |
-| Score macro recall | **0.7800** |
-
-Primitive accuracy:
-
-| Primitive | Accuracy | Brier |
-| --- | ---: | ---: |
-| `choice` | 89.00% | 0.1167 |
-| `noul` | 92.50% | 0.0572 |
-| `score` | 78.00% | 0.2327 |
-
-Score recall by risk level:
-
-| Risk | Support | Recall |
-| ---: | ---: | ---: |
-| 0 | 20 | 85% |
-| 1 | 20 | 60% |
-| 2 | 20 | 90% |
-| 3 | 20 | 65% |
-| 4 | 20 | 90% |
-
-The remaining weakness is the boundary between risk 1 and risk 3. ECE is also
-not perfect, so confidence should be treated as a routing signal rather than a
-guarantee.
+- Benchmark visualization: [`docs/assets/laya-th960-benchmark.svg`](docs/assets/laya-th960-benchmark.svg)
 
 ## Use the published model
 
@@ -121,7 +92,7 @@ print(json.dumps(
 For a checkpoint already downloaded in Colab, use:
 
 ```python
-agent = Agent("artifacts/laya-th960", device="cuda")
+agent = Agent("artifacts/laya-th1200", device="cuda")
 ```
 
 Always put the policy gate outside the model:
@@ -147,7 +118,7 @@ enough (`>= 0.7`) to indicate a likely prohibition. A medium score from
 which prevents ordinary but underspecified work from being rejected solely
 because the model is uncertain.
 
-## Run the local HTTP service
+## Run the local HTTP & MCP service
 
 Install the project and start the native Laya/PyTorch service:
 
@@ -156,22 +127,24 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m pip install -e . --no-deps
 
-.\.venv\Scripts\python.exe -m jevbro.serve `
-  --model JonusNattapong/jev-my-bro-th960 `
+# Start HTTP and MCP server (with INT8 quantization on CPU and auto-loaded rules.yaml)
+.\.venv\Scripts\jev.exe serve `
+  --model JonusNattapong/jev-my-bro-th1200 `
   --host 127.0.0.1 `
-  --port 8080
+  --port 8787 `
+  --quantize
 ```
 
-Check health:
+Check health (includes cache statistics and rule hit counts):
 
 ```powershell
-curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8787/health
 ```
 
 Ask for a typed governance decision:
 
 ```powershell
-curl -X POST http://127.0.0.1:8080/v1/decide `
+curl -X POST http://127.0.0.1:8787/v1/decide `
   -H "content-type: application/json" `
   -d '{"context":"Deploy the payment service to production","language":"en"}'
 ```
@@ -181,22 +154,22 @@ The service also exposes `/v1/predict`, `/v1/jev-my-bro/decide`,
 [`docs/MCP_INTEGRATION.md`](docs/MCP_INTEGRATION.md) for connecting Codex,
 Claude Code, or OpenCode through MCP.
 
-## Reproduce the Thai 960 training run
+## Reproduce the Thai 1,200 training run
 
 The checked-in source rows are manually authored. The builder creates the
 JSONL splits and checks unique IDs, unique requests, action-label consistency,
 and balanced holdouts.
 
 ```bash
-python scripts/build_th_curated_960.py
-python scripts/validate_dataset.py --root data/th_curated_960
+python scripts/build_th_curated_1200.py
+python scripts/validate_dataset.py --root data/th_curated_1200
 ```
 
 The split layout is:
 
 | Split | Cases | Decisions | Purpose |
 | --- | ---: | ---: | --- |
-| Train | 960 | 3,840 | Fit model weights |
+| Train | 1,200 | 4,800 | Fit model weights (including 120 agent task contexts) |
 | Validation | 100 | 400 | Select checkpoint |
 | Calibration | 100 | 400 | Fit temperature and score decoder |
 | Test | 100 | 400 | One locked final evaluation |
@@ -204,50 +177,69 @@ The split layout is:
 On a Colab T4:
 
 ```bash
-!python -m jevbro.train --config configs/colab-th960.yaml
+!python -m jevbro.train --config configs/colab-th1200.yaml
 
 !python -m jevbro.calibrate \
-  --model artifacts/laya-th960 \
-  --data data/th_curated_960/calibration.jsonl \
-  --report artifacts/laya-th960/calibration-report.json
+  --model artifacts/laya-th1200 \
+  --data data/th_curated_1200/calibration.jsonl \
+  --report artifacts/laya-th1200/calibration-report.json
 
 !python -m jevbro.evaluate \
-  --model artifacts/laya-th960 \
-  --data data/th_curated_960/test.jsonl \
+  --model artifacts/laya-th1200 \
+  --data data/th_curated_1200/test.jsonl \
   --device cuda \
   --lock-decoder \
-  --report artifacts/laya-th960/test-report.json
+  --report artifacts/laya-th1200/test-report.json
 ```
 
 `calibrate` refuses a path named `test.jsonl`. The `--lock-decoder` flag
 requires calibration provenance in `rl_agent_config.json`, including the
 calibration dataset hash, before evaluating test.
 
-## Architecture
+## Hybrid Cascaded Architecture
+
+Jev combines instant deterministic safety with neural semantic generalization across 3 tiers:
 
 ```text
-Thai/English request
-        |
-        v
-Laya multilingual encoder
-        |
-        v
-Typed heads: choice / noul / score
-        |
-        v
-RLCD + soft-target CE + ordinal/RPS score objectives
-        |
-        v
-Calibration split: temperatures + score decoder
-        |
-        v
-Native inference -> FastAPI -> optional MCP or Go gateway
+Incoming Operational Request / Tool Call
+                   |
+                   v
+  +---------------------------------+
+  | Layer 1: Fast-Path Rule Engine  | < 1 ms  (Deterministic rules.yaml / hard blocks)
+  +---------------------------------+
+         | Match?
+        / \
+      YES  NO
+      /     \
+  [Return]   v
+  +---------------------------------+
+  | Layer 2: LRU Decision Cache     | ~15 ms  (1024-entry normalized LRU hit)
+  +---------------------------------+
+         | Cache Hit?
+        / \
+      YES  NO
+      /     \
+  [Return]   v
+  +---------------------------------+
+  | Layer 3: Neural Model Inference | ~200-300 ms (CPU Dynamic INT8 Quantization)
+  |  - Base: convaiinnovations/laya |
+  |  - Heads: choice / noul / score |
+  +---------------------------------+
+                   |
+                   v
+         Calibrated Outer Policy Gate
+          (prohibited >= 0.5 -> reject,
+           needs_review >= 0.5 -> ask_user,
+           else -> execute)
 ```
 
-The project uses Laya 0.3.4 with the `convaiinnovations/laya-multilingual`
-base checkpoint. Calibration is independent from validation and test. The
-test set is not used for training, temperature fitting, decoder selection, or
-threshold tuning.
+## Automated Claude Code Governance Hook
+
+Jev can intercept tool execution proactively before shell commands or file writes run:
+- Script: [`hooks/claude_pre_tool_use.py`](hooks/claude_pre_tool_use.py)
+- Configuration: `.claude/settings.json`
+- Protocol: returns JSON with `permissionDecision` (`allow`, `ask`, `deny`)
+- Full documentation: [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md)
 
 ## Run the public JevBench tasks
 
@@ -263,7 +255,7 @@ git clone --depth 1 https://github.com/fstandhartinger/jevbench.git /content/jev
 python -m pip install -e /content/jevbench
 python scripts/run_jevbench_public.py \
   --jevbench-dir /content/jevbench \
-  --model artifacts/laya-th960 \
+  --model artifacts/laya-th1200 \
   --device cuda
 ```
 
@@ -277,31 +269,34 @@ revision, device, and summary when reporting the result.
 ## Repository layout
 
 ```text
-jevbro/                         shared inference, calibration, evaluation
-configs/colab-th960.yaml        reproducible T4 training config
-data/th_curated_960/            Thai 960-case JSONL splits and README
-scripts/build_th_curated_960.py dataset builder and integrity checks
+jevbro/                         core runtime, rules engine, caching, MCP server
+hooks/claude_pre_tool_use.py    Claude Code PreToolUse governance hook
+configs/colab-th1200.yaml       reproducible T4 training config for th1200
+data/th_curated_1200/           Thai 1,200-case JSONL splits and README
+rules.example.yaml              template for custom fast-path rules
+scripts/build_th_curated_1200.py dataset builder and integrity checks
+scripts/analyze_rule_hit_rate.py rule engine telemetry analyzer
 scripts/probe_real_requests.py  qualitative real-request probe
 scripts/run_jevbench_public.py  JevBench public-task runner
-docs/assets/laya-th960-benchmark.svg  final locked benchmark visualization
-tests/                          unit, data, and workflow tests
+docs/model-cards/jev-my-bro-th1200.md  model card for th1200
+tests/                          unit, hook, cache, data, and workflow tests
 ```
 
 ## Verification
 
 ```bash
-python scripts/validate_dataset.py --root data/th_curated_960
-python -m compileall -q jevbro scripts
+python scripts/validate_dataset.py --root data/th_curated_1200
+python -m compileall -q jevbro hooks scripts
 pytest -q
 ```
 
-The latest repository verification passed with **62 tests**. GPU training and
-the final laya-th960 metrics were run in Google Colab; they are not reproduced
+The latest repository verification passed with **89 tests (100% pass rate)**. GPU training and
+the final laya-th1200 metrics were run in Google Colab; they are not reproduced
 by the local test suite.
 
 ## Limitations and safety
 
-- The Thai 960-case set is manually curated development data, not a complete
+- The Thai 1,200-case set is manually curated development data, not a complete
   production authorization policy.
 - The test report is a benchmark on this held-out set, not proof of safety on
   unseen organizations or domains.

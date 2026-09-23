@@ -41,6 +41,17 @@ cases with 86.75% accuracy and 100% Level-4 risk recall.
 Write the `context` for `jev_task_start` and `jev_decide` in Thai and pass
 `language="th"` for optimal semantic decisions.
 
-The server operates a hybrid cascaded architecture:
-- **Layer 1 (Fast-Path)**: Instant (<1ms) deterministic blocks for destructive acts (`rm -rf`) and allows for pure read-only inspections (`git status`). Custom rules can be placed in `rules.yaml`.
-- **Layer 2 (Neural)**: Semantic evaluation via `th1200` with optional INT8 dynamic quantization for CPU acceleration.
+The server operates a 3-layer hybrid cascaded architecture:
+- **Layer 1 (Fast-Path Rules)**: Instant (<1ms) deterministic blocks for destructive acts (`rm -rf`) and allows for pure read-only inspections (`git status`). Custom rules can be placed in `rules.yaml` (see `rules.example.yaml`).
+- **Layer 2 (LRU Cache)**: 1024-slot in-memory cache returning ~15ms decisions on repeated commands without touching the neural model.
+- **Layer 3 (Neural Model)**: Semantic evaluation via `th1200` with INT8 dynamic quantization on CPU (~200–300ms).
+
+## Automated PreToolUse Hook Integration
+
+This repository includes `.claude/settings.json` configured with `hooks/claude_pre_tool_use.py`.
+Every tool execution (`Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`) is proactively evaluated:
+- **Safe commands**: allowed automatically without latency overhead.
+- **Destructive operations**: rejected immediately (`permissionDecision: deny`).
+- **High-risk modifications**: prompt user for confirmation (`permissionDecision: ask`).
+
+See [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md) for full configuration and environment options (`JEV_TIMEOUT`, `JEV_FAIL_MODE`).

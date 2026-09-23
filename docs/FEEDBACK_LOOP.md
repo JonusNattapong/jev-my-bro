@@ -139,20 +139,30 @@ Use the installed Windows console entry point directly:
 .\.venv\Scripts\jev.exe stats
 .\.venv\Scripts\jev.exe eval
 .\.venv\Scripts\jev.exe export
+.\.venv\Scripts\jev.exe harvest
 ```
 
 The legacy wrappers live under `scripts\` rather than the repository root.
 New documentation uses `.\.venv\Scripts\jev.exe` as the canonical path.
 
 Task commands call the running MCP service, so they reuse the single loaded Laya
-checkpoint instead of loading the model for every command. `eval` and `export`
+checkpoint instead of loading the model for every command. `eval`, `export`, and `harvest`
 operate directly on the local SQLite feedback store.
 
-## Evaluation and export
+## Evaluation, export, and active learning harvest
 
 ```powershell
+# Evaluate model calibration against task outcomes
 .\.venv\Scripts\jev.exe eval
+
+# Export session logs for external audits
 .\.venv\Scripts\jev.exe export
+
+# Mine edge cases and high-uncertainty decisions for dataset expansion (e.g. th1400)
+.\.venv\Scripts\jev.exe harvest
+
+# Analyze Fast-Path rule hit rates from real-world telemetry
+python scripts/analyze_rule_hit_rate.py
 ```
 
 Defaults:
@@ -160,6 +170,8 @@ Defaults:
 ```text
 artifacts/feedback/evaluation.json
 artifacts/feedback/v0.3-feedback.jsonl
+artifacts/feedback/active_learning_report.json
+data/active_learning/candidates_th1400.csv
 ```
 
 The default export includes terminal tasks (completed and failed) and excludes

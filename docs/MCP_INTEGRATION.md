@@ -108,11 +108,24 @@ For every non-trivial coding task:
 
 See [`FEEDBACK_LOOP.md`](FEEDBACK_LOOP.md) for CLI/evaluation/export details.
 
+## Optimization and Rules Configuration
+
+Jev MCP server features a 3-layer hybrid architecture:
+- **Layer 1 Fast-Path Rules**: Deterministic regex matching (<1ms) for instant allows or catastrophic blocks.
+  Pass `--rules-config path/to/rules.yaml` or place a `rules.yaml` in the repo root / `.jev/rules.yaml`. See `rules.example.yaml`.
+- **Layer 2 LRU Decision Cache**: In-memory LRU cache (1024 entries) yielding ~15ms responses on repeated tool calls. Cache metrics are exposed via `jev_health`.
+- **Layer 3 Neural Model**: `th1200` with optional `--quantize` on CPU (~200–300ms).
+
+## Automated Claude Code Hook Integration
+
+For zero-overhead proactive protection in Claude Code, configure the PreToolUse hook to automatically inspect every tool execution before it runs:
+See [`CLAUDE_HOOK_SETUP.md`](CLAUDE_HOOK_SETUP.md).
+
 ## STDIO alternative
 
 ```powershell
-.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --transport stdio
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th1200 --transport stdio --quantize
 ```
 
 Do not run three separate stdio instances for three coding agents on a
-memory-constrained workstation; each process may load its own checkpoint.
+memory-constrained workstation; each process may load its own checkpoint. Streamable HTTP on `http://127.0.0.1:8787/mcp` is strongly recommended.
