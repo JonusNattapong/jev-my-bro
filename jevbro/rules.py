@@ -1,4 +1,4 @@
-"""Deterministic Fast-Path Rule Engine for instant security blocks and safe read-only operations."""
+﻿"""Deterministic Fast-Path Rule Engine for instant security blocks and safe read-only operations."""
 
 from __future__ import annotations
 
@@ -36,6 +36,18 @@ DEFAULT_REJECT_RULES: list[tuple[str, re.Pattern, str]] = [
         ),
         "Destructive file system or disk formatting operation detected.",
     ),
+    (
+        "hard_reject_fs_extended",
+        re.compile(
+            r"\brm\s+(-r\s+-f|-f\s+-r)\s+/|"
+            r"\brm\s+(--recursive|--force)\s+/|"
+            r"\bfind\s+/.*?-delete\b|"
+            r"shutil\.rmtree",
+            flags=re.IGNORECASE,
+        ),
+        "Extended file system destructive patterns.",
+    ),
+
     (
         "hard_reject_secret_exfiltration",
         re.compile(
