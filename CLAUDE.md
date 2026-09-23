@@ -31,13 +31,16 @@ The `jev` MCP server (`http://127.0.0.1:8787/mcp`) must be running before the
 session starts. If `jev` fails to connect, start it and reconnect with `/mcp`:
 
 ```powershell
-.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --host 127.0.0.1 --port 8787
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th1200 --host 127.0.0.1 --port 8787 --quantize
 ```
 
-## Language
+## Language and Governance Engine
 
-The active model (`jev-my-bro-th960`) was trained on Thai data only. Write the
-`context` for `jev_task_start` and `jev_decide` in Thai and pass
-`language="th"`. English context gives less reliable decisions; in a smoke
-test an English force-push request was classified `execute` while the Thai
-equivalent was classified `ask_user`.
+The active model (`jev-my-bro-th1200`) was trained on 1,200 curated Thai governance
+cases with 86.75% accuracy and 100% Level-4 risk recall.
+Write the `context` for `jev_task_start` and `jev_decide` in Thai and pass
+`language="th"` for optimal semantic decisions.
+
+The server operates a hybrid cascaded architecture:
+- **Layer 1 (Fast-Path)**: Instant (<1ms) deterministic blocks for destructive acts (`rm -rf`) and allows for pure read-only inspections (`git status`). Custom rules can be placed in `rules.yaml`.
+- **Layer 2 (Neural)**: Semantic evaluation via `th1200` with optional INT8 dynamic quantization for CPU acceleration.

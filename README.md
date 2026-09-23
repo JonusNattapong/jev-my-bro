@@ -13,16 +13,19 @@ approval, tests, audit logs, or a human safety boundary.
 
 ## Latest Thai model
 
-The latest manually curated Thai experiment is `laya-th960`:
+The latest manually curated Thai experiment is `laya-th1200`:
 
+- Model: [JonusNattapong/jev-my-bro-th1200](https://huggingface.co/JonusNattapong/jev-my-bro-th1200)
+- Training data: 1,200 Thai cases
+- Validation, calibration, and test: 100 cases each
+- Test: 100 cases, 400 typed decisions, 20 cases per risk level
+- Test accuracy: 86.75% (Action choice: 88.0%, Noul: 93.5%, Level 4 risk recall: 100%)
+- Architecture: **Hybrid Cascaded** (Layer 1 Fast-Path <1ms rule engine + Layer 2 th1200 Neural model with CPU INT8 quantization)
+
+The previous experiment was `laya-th960`:
 - Model: [JonusNattapong/jev-my-bro-th960](https://huggingface.co/JonusNattapong/jev-my-bro-th960)
 - Dataset: [JonusNattapong/jev-my-bro-dataset-th960](https://huggingface.co/datasets/JonusNattapong/jev-my-bro-dataset-th960)
 - Model Card: [`docs/model-cards/jev-my-bro-th960.md`](docs/model-cards/jev-my-bro-th960.md)
-- Training data: 960 Thai cases
-- Validation, calibration, and test: 100 cases each
-- Test: 100 cases, 400 typed decisions, 20 cases per risk level
-- Selected checkpoint: epoch 5, selected from validation
-- Test decoder: threshold, selected from calibration only
 
 ![laya-th960 benchmark](docs/assets/laya-th960-benchmark.svg)
 
@@ -88,7 +91,7 @@ import torch
 from laya import Agent
 from jevbro.questions import default_questions
 
-MODEL_ID = "JonusNattapong/jev-my-bro-th960"
+MODEL_ID = "JonusNattapong/jev-my-bro-th1200"
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 agent = Agent(MODEL_ID, device=DEVICE)
 
@@ -126,16 +129,23 @@ Always put the policy gate outside the model:
 ```python
 result = decide("ลบข้อมูลใน production ที่ไม่ใช้แล้ว", "database")
 
-if result["prohibited"] >= 0.5 or result["action"] == "reject":
+if result["prohibited"] >= 0.7 or result["action"] == "reject":
     decision = "reject"
-elif result["needs_review"] >= 0.5 or result["action"] == "ask_user":
+elif (
+    result["needs_review"] >= 0.5
+    or result["action"] == "ask_user"
+    or result["prohibited"] >= 0.5
+):
     decision = "human_review"
 else:
     decision = "execute"
 ```
 
-The prohibited signal has priority over the raw action. This prevents an
-ambiguous raw `ask_user` result from weakening a clear prohibited signal.
+The prohibited signal has priority over the raw action only when it is high
+enough (`>= 0.7`) to indicate a likely prohibition. A medium score from
+`0.5` to below `0.7` is treated as uncertainty and sent to human review,
+which prevents ordinary but underspecified work from being rejected solely
+because the model is uncertain.
 
 ## Run the local HTTP service
 
@@ -239,6 +249,31 @@ base checkpoint. Calibration is independent from validation and test. The
 test set is not used for training, temperature fitting, decoder selection, or
 threshold tuning.
 
+## Run the public JevBench tasks
+
+This repository includes a runner that reuses JevBench's own public task
+loader, serial runner, and scoring implementation. It loads the local Jev
+checkpoint through `laya.Agent`, so a Colab GPU can be used without changing
+the benchmark protocol.
+
+Clone JevBench beside this repository, then run its published tasks:
+
+```bash
+git clone --depth 1 https://github.com/fstandhartinger/jevbench.git /content/jevbench
+python -m pip install -e /content/jevbench
+python scripts/run_jevbench_public.py \
+  --jevbench-dir /content/jevbench \
+  --model artifacts/laya-th960 \
+  --device cuda
+```
+
+The run writes raw responses and the public summary under
+`private/jevbench-public/`; that directory is ignored by Git. The local run
+covers only the published task files. The official JevBench board also uses
+held-out tasks that are not distributed publicly, so this output must not be
+called an official full-score submission. Keep its dataset hash, model
+revision, device, and summary when reporting the result.
+
 ## Repository layout
 
 ```text
@@ -247,6 +282,7 @@ configs/colab-th960.yaml        reproducible T4 training config
 data/th_curated_960/            Thai 960-case JSONL splits and README
 scripts/build_th_curated_960.py dataset builder and integrity checks
 scripts/probe_real_requests.py  qualitative real-request probe
+scripts/run_jevbench_public.py  JevBench public-task runner
 docs/assets/laya-th960-benchmark.svg  final locked benchmark visualization
 tests/                          unit, data, and workflow tests
 ```

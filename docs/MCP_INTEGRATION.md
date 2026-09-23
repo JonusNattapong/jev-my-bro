@@ -13,13 +13,15 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m pip install -e . --no-deps
 
-.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th960 --host 127.0.0.1 --port 8787
+.\.venv\Scripts\jev.exe serve --model JonusNattapong/jev-my-bro-th1200 --host 127.0.0.1 --port 8787 --quantize
 ```
 
 `--model` accepts a Hugging Face model ID or a local checkpoint directory. The
-recommended model is `JonusNattapong/jev-my-bro-th960`; it is downloaded to the
-Hugging Face cache on first start. It was trained on Thai data only, so agents
-should send decision `context` in Thai with `language="th"`.
+recommended model is `JonusNattapong/jev-my-bro-th1200`; it is downloaded to the
+Hugging Face cache on first start. It was trained on 1,200 curated Thai governance
+examples with 86.75% accuracy. Agents should send decision `context` in Thai
+with `language="th"` for optimal semantic precision. Pass `--quantize` on CPU
+for dynamic INT8 acceleration.
 
 The older local checkpoint `.\artifacts\laya-model` also works and contains
 `model.safetensors`, `rl_agent_config.json`, `encoder\`, and `tokenizer\`.

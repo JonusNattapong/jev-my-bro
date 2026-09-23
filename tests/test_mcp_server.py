@@ -258,3 +258,52 @@ def test_standalone_decide_and_legacy_outcome_remain_available(tmp_path: Path) -
             assert outcome.structured_content["tests_passed"] is True
 
     asyncio.run(run())
+
+
+def test_mcp_supports_arbitrary_source_agent_and_custom_thresholds(tmp_path: Path) -> None:
+    async def run() -> None:
+        server, store = make_server(tmp_path)
+        async with Client(server, raise_exceptions=True) as client:
+            # Arbitrary agent name (e.g. antigravity, cursor, custom-agent)
+            started = await client.call_tool(
+                "jev_task_start",
+                {
+                    "context": "Autonomous refactoring task",
+                    "source_agent": "antigravity",
+                    "prohibited_threshold": 0.85,
+                    "review_threshold": 0.65,
+                },
+            )
+            task = started.structured_content
+            assert task["source_agent"] == "antigravity"
+            assert task["status"] == "running"
+
+            decide_res = await client.call_tool(
+                "jev_decide",
+                {
+                    "context": "Minor local cleanups",
+                    "source_agent": "antigravity",
+                    "task_id": task["task_id"],
+                },
+            )
+            decide_content = decide_res.structured_content
+            assert decide_content["source_agent"] == "antigravity"
+
+            # Standalone decision with cursor agent
+            cursor_res = await client.call_tool(
+                "jev_decide",
+                {
+                    "context": "Standalone quick check",
+                    "source_agent": "cursor",
+                },
+            )
+            assert cursor_res.structured_content["source_agent"] == "cursor"
+
+            listing = await client.call_tool(
+                "jev_task_list",
+                {"source_agent": "antigravity"},
+            )
+            assert listing.structured_content["count"] == 1
+
+    asyncio.run(run())
+

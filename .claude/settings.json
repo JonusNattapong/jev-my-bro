@@ -1,0 +1,21 @@
+﻿{
+    "version":  1,
+    "hooks":  {
+                  "PreToolUse":  [
+                                     {
+                                         "matcher":  "Bash|Write|Edit|MultiEdit|NotebookEdit",
+                                         "hooks":  [
+                                                       {
+                                                           "type":  "command",
+                                                           "command":  "python hooks/claude_pre_tool_use.py"
+                                                       }
+                                                   ]
+                                     }
+                                 ]
+              },
+    "environment":  {
+                        "JEV_TIMEOUT":  "5.0",
+                        "JEV_FAIL_MODE":  "deny",
+                        "JEV_MCP_URL":  "http://127.0.0.1:8787/mcp"
+                    }
+}

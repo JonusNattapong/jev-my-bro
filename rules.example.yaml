@@ -1,0 +1,31 @@
+# rules.example.yaml - Example Fast-Path Rules Configuration for jev-my-bro
+# Place this file as 'rules.yaml' or '.jev/rules.yaml' in your project root.
+
+# 1. Custom Reject Rules: Evaluated first. Any match returns instant 'reject' (risk: 4.0, prohibited: 1.0).
+reject_rules:
+  - id: custom_reject_company_secrets
+    pattern: '\b(SUPER_SECRET_TOKEN|COMPANY_PRIVATE_KEY|INTERNAL_AUTH_SECRET)\b'
+    reason: 'Inspection or exfiltration of internal company tokens is strictly prohibited.'
+
+  - id: custom_reject_production_kubernetes
+    pattern: '\bkubectl\s+(delete\s+namespace|delete\s+deployment|drain)\b'
+    reason: 'Direct cluster destructive operations require explicit manual devops approval.'
+
+  - id: custom_reject_drop_collection
+    pattern: '\b(db\..*\.drop\(\)|dropDatabase\(\))\b'
+    reason: 'NoSQL collection and database drops are prohibited via agent.'
+
+# 2. Custom Allow Rules: Evaluated only if no reject rule matched and no mutation keywords are present.
+allow_rules:
+  - id: custom_allow_safe_tests
+    pattern: '^(pytest\b|python\s+-m\s+pytest|cargo\s+test|npm\s+test)\b'
+    reason: 'Routine local test runner invocation.'
+
+  - id: custom_allow_env_example
+    pattern: '\b(cat|view_file|read)\s+\.env\.example\b'
+    reason: 'Reading template env example is safe.'
+
+# 3. Custom Mutation Exclusions: Additional keywords that disqualify a command from Hard Allow.
+mutation_exclusions:
+  - '\b(nuke|wipe|purge|obliterate)\b'
+  - 'ทำลายล้าง|ล้างระบบ'

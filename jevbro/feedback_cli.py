@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("feedback_id")
 
     start = sub.add_parser("start")
-    start.add_argument("--agent", required=True, choices=("claude_code", "codex", "opencode", "unknown"))
+    start.add_argument("--agent", required=True, help="Agent name (e.g. claude_code, antigravity, cursor, etc.)")
     start.add_argument("--task", required=True)
     start.add_argument("--repo")
     start.add_argument("--session-id")

@@ -49,9 +49,11 @@ def create_mcp_server(
     @mcp.tool()
     def jev_task_start(
         context: str,
-        source_agent: SourceAgent = "unknown",
+        source_agent: str = "unknown",
         language: Literal["en", "th"] | None = None,
         abstain_threshold: float = 0.60,
+        prohibited_threshold: float | None = None,
+        review_threshold: float | None = None,
         session_id: str | None = None,
         repo: str | None = None,
         agent_model: str | None = None,
@@ -63,6 +65,8 @@ def create_mcp_server(
             source_agent=source_agent,
             language=language,
             abstain_threshold=abstain_threshold,
+            prohibited_threshold=prohibited_threshold,
+            review_threshold=review_threshold,
             session_id=session_id,
             repo=repo,
             agent_model=agent_model,
@@ -137,7 +141,7 @@ def create_mcp_server(
     @mcp.tool()
     def jev_task_list(
         status: Literal["running", "completed", "failed"] | None = None,
-        source_agent: SourceAgent | None = None,
+        source_agent: str | None = None,
         limit: int = 50,
     ) -> dict[str, Any]:
         """List tracked tasks, optionally filtered by lifecycle state or agent."""
@@ -151,7 +155,9 @@ def create_mcp_server(
         feedback_id: str | None = None,
         language: Literal["en", "th"] | None = None,
         abstain_threshold: float = 0.60,
-        source_agent: SourceAgent = "unknown",
+        prohibited_threshold: float | None = None,
+        review_threshold: float | None = None,
+        source_agent: str = "unknown",
         session_id: str | None = None,
     ) -> dict[str, Any]:
         """Persist one advisory decision, optionally attached to a tracked task."""
@@ -161,6 +167,8 @@ def create_mcp_server(
             feedback_id=feedback_id,
             language=language,
             abstain_threshold=abstain_threshold,
+            prohibited_threshold=prohibited_threshold,
+            review_threshold=review_threshold,
             source_agent=source_agent,
             session_id=session_id,
         )
@@ -168,7 +176,7 @@ def create_mcp_server(
     @mcp.tool()
     def jev_feedback_start(
         task: str,
-        source_agent: SourceAgent,
+        source_agent: str = "unknown",
         repo: str | None = None,
         session_id: str | None = None,
         task_id: str | None = None,
@@ -287,7 +295,7 @@ def create_mcp_server(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Serve jev-my-bro over MCP")
-    parser.add_argument("--model", default="artifacts/laya-model")
+    parser.add_argument("--model", default="JonusNattapong/jev-my-bro-th1200")
     parser.add_argument("--device")
     parser.add_argument(
         "--transport",
@@ -298,20 +306,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8787)
     parser.add_argument("--path", default="/mcp")
     parser.add_argument("--feedback-db", default=str(DEFAULT_FEEDBACK_DB))
+    parser.add_argument("--quantize", action="store_true", help="Enable INT8 quantization on CPU")
+    parser.add_argument("--rules-config", help="Path to rules.yaml or rules.json config file")
     return parser.parse_args()
 
 
 def run_server(
     *,
-    model: str = "artifacts/laya-model",
+    model: str = "JonusNattapong/jev-my-bro-th1200",
     device: str | None = None,
     transport: str = "streamable-http",
     host: str = "127.0.0.1",
     port: int = 8787,
     path: str = "/mcp",
     feedback_db: str | Path = DEFAULT_FEEDBACK_DB,
+    quantize: bool = False,
+    rules_config: str | Path | None = None,
 ) -> None:
+    from jevbro.rules import load_rules_config
+
+    # Auto-load rules config if provided or present in working directory
+    load_rules_config(rules_config)
+
     agent = laya.Agent(model, device=device)
+
+    # Optional dynamic INT8 quantization for CPU acceleration
+    if quantize:
+        try:
+            import torch
+
+            if hasattr(agent, "model") and hasattr(agent.model, "encoder"):
+                agent.model.encoder = torch.quantization.quantize_dynamic(
+                    agent.model.encoder, {torch.nn.Linear}, dtype=torch.qint8
+                )
+        except Exception:
+            pass  # Gracefully fall back to standard model
+
     store = FeedbackStore(feedback_db)
     mcp = create_mcp_server(agent, model_name=model, feedback_store=store)
     if transport == "stdio":
@@ -337,6 +367,8 @@ def main() -> None:
         port=args.port,
         path=args.path,
         feedback_db=args.feedback_db,
+        quantize=args.quantize,
+        rules_config=args.rules_config,
     )
 
 
