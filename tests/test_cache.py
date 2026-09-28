@@ -20,21 +20,21 @@ def test_cache_hit_and_miss(tmp_path: Path) -> None:
     core = JevCore(fake_agent, store, model_name="test-model", cache_size=2)
 
     # First call: Cache miss
-    res1 = core.decide("pytest tests/test_rules.py")
+    res1 = core.decide("pytest tests/test_cache.py")
     assert res1["cache_hit"] is False
     assert core.cache_hits == 0
     assert core.cache_misses == 1
     assert fake_agent.predict.call_count == 1
 
     # Second call: Exact same command -> Cache hit!
-    res2 = core.decide("pytest tests/test_rules.py")
+    res2 = core.decide("pytest tests/test_cache.py")
     assert res2["cache_hit"] is True
     assert core.cache_hits == 1
     assert core.cache_misses == 1
     assert fake_agent.predict.call_count == 1
 
     # Third call: Whitespace-normalized -> Cache hit!
-    res3 = core.decide("   pytest   tests/test_rules.py   \n")
+    res3 = core.decide("   pytest   tests/test_cache.py   \n")
     assert res3["cache_hit"] is True
     assert core.cache_hits == 2
     assert core.cache_misses == 1

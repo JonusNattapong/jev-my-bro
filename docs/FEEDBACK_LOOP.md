@@ -160,9 +160,6 @@ operate directly on the local SQLite feedback store.
 
 # Mine edge cases and high-uncertainty decisions for dataset expansion (e.g. th1400)
 .\.venv\Scripts\jev.exe harvest
-
-# Analyze Fast-Path rule hit rates from real-world telemetry
-python scripts/analyze_rule_hit_rate.py
 ```
 
 Defaults:

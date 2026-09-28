@@ -19,7 +19,8 @@ python -m venv .venv
 `--model` accepts a Hugging Face model ID or a local checkpoint directory. The
 recommended model is `JonusNattapong/jev-my-bro-th1200`; it is downloaded to the
 Hugging Face cache on first start. It was trained on 1,200 curated Thai governance
-examples with 86.75% accuracy. Agents should send decision `context` in Thai
+examples and measures 49.0% action accuracy against a 59.0% majority baseline on its
+own test split, so its verdicts are advisory. Agents should send decision `context` in Thai
 with `language="th"` for optimal semantic precision. Pass `--quantize` on CPU
 for dynamic INT8 acceleration.
 
@@ -108,13 +109,11 @@ For every non-trivial coding task:
 
 See [`FEEDBACK_LOOP.md`](FEEDBACK_LOOP.md) for CLI/evaluation/export details.
 
-## Optimization and Rules Configuration
+## Optimization and Runtime Configuration
 
-Jev MCP server features a 3-layer hybrid architecture:
-- **Layer 1 Fast-Path Rules**: Deterministic regex matching (<1ms) for instant allows or catastrophic blocks.
-  Pass `--rules-config path/to/rules.yaml` or place a `rules.yaml` in the repo root / `.jev/rules.yaml`. See `rules.example.yaml`.
-- **Layer 2 LRU Decision Cache**: In-memory LRU cache (1024 entries) yielding ~15ms responses on repeated tool calls. Cache metrics are exposed via `jev_health`.
-- **Layer 3 Neural Model**: `th1200` with optional `--quantize` on CPU (~200–300ms).
+Jev MCP server features a 2-layer cached architecture:
+- **Layer 1 LRU Decision Cache**: In-memory LRU cache (1024 entries) yielding ~15ms responses on repeated tool calls. Cache metrics are exposed via `jev_health`.
+- **Layer 2 Neural Model**: `th1200` with optional `--quantize` on CPU (~200–300ms).
 
 ## Automated Claude Code Hook Integration
 

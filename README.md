@@ -20,20 +20,51 @@ The latest manually curated Thai model is `laya-th1200`:
 - Training data: 1,200 Thai cases (`data/th_curated_1200/train.jsonl`)
 - Validation, calibration, and test: 100 cases each
 - Test: 100 cases, 400 typed decisions, 20 cases per risk level
-- Architecture: **Hybrid Cascaded** (Layer 1 Fast-Path <1ms rule engine + Layer 2 LRU Decision Cache + Layer 3 th1200 Neural model with CPU INT8 quantization)
+- Architecture: **Two-Tier Cached** (Layer 1 LRU Decision Cache + Layer 2 th1200 Neural model with CPU INT8 quantization)
 
-### Locked Test Results
+### Measured Test Results
 
-| Metric | laya-th1200 (Latest) | laya-th960 (Baseline) |
-| --- | ---: | ---: |
-| Overall accuracy | **86.75%** | 88.00% |
-| Action choice accuracy | **88.00%** | 89.00% |
-| Noul accuracy (`needs_review` / `prohibited`) | **93.50%** | 92.50% |
-| Level 4 risk recall (Catastrophic/Destructive) | **100.00%** | 90.00% |
-| Score within-one accuracy | **95.00%** | 96.00% |
+Reproduced on 2026-09-28 against the published `JonusNattapong/jev-my-bro-th1200` checkpoint, on its
+own locked 100-case test split in `data/th_curated_1200/test.jsonl` (400 typed decisions), via
+`artifacts/live-test-metrics.json`.
+
+| Metric | th1200 (measured) | Note |
+| --- | ---: | --- |
+| Action choice accuracy (exact match) | **49.0%** | below the 59.0% majority baseline |
+| Action soft-target accuracy | 38.8% | |
+| Majority-class baseline | 59.0% | always predicting `execute` |
+| Score QWK (risk 0-4) | **0.205** | weak ordinal agreement |
+| Score within-one accuracy | 67.0% | |
+| Risk head mean by gold level 0→4 | 2.31 / 2.33 / 2.43 / 2.45 / 2.53 | spread of 0.22 across all five levels |
+
+Earlier versions of this file claimed 86.75% overall accuracy, 88.0% action accuracy, 93.5% noul
+accuracy, 100% Level-4 risk recall, and 95.0% within-one accuracy. **Nothing in this repository
+reproduces those numbers.** The best result in any evaluation report on this machine is 74.65%
+(`artifacts/v41/test-report.json`, 144 cases); the 954-case run in `artifacts/1k-v3/` reports 72.72%.
+Those reports are untracked local files, not versioned evidence. Treat this model as unfit for
+gating tool calls until the criteria in
+[`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md) are met.
+
+#### Known limitations
+
+- The risk head predicts approximately the training mean (~2.2) regardless of input, so it carries
+  no information about the individual request.
+- The action head abstains (`confidence` < 0.6) on essentially every input, so `abstain` is true and
+  `decision` is null in most responses.
+- Output depends on surface phrasing rather than meaning: the same request scored
+  `prohibited` 0.238 to 0.736 across four paraphrases, and a read-only `git status` scored higher
+  than `rm -rf /`.
+- Training contexts are short (mean 70 characters, max 140), while contexts sent to
+  `jev_task_start` in real agent sessions reach 460 characters. That length gap is a measured
+  distribution shift, not a hypothesis.
 
 #### Why th1200?
-Earlier checkpoints (`th960`) were trained on short 1-line requests (mean ~65 chars). Real coding agent contexts sent to `jev_task_start` are 120–460 characters long and include meta-phrases like *"ผู้ใช้สั่งให้ทำแล้ว"* or *"ไม่มีการ push"*. This previously caused false-positive `prohibited` spikes on routine tasks. `th1200` incorporates 120 agent-task context cases in `th_17_agent_task_context_train.csv`, resolving false alarms while achieving **flawless 100% Level 4 risk recall**.
+
+Earlier checkpoints (`th960`) were trained on short 1-line requests. `th1200` adds 120 longer
+agent-task context cases from `th_17_agent_task_context_train.csv` (mean 114 characters), included
+via `scripts/build_th_curated_1200.py`. That is still far short of the 460-character contexts real
+sessions produce.
+
 
 The previous experiment was `laya-th960`:
 - Model: [JonusNattapong/jev-my-bro-th960](https://huggingface.co/JonusNattapong/jev-my-bro-th960)
@@ -127,7 +158,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m pip install -e . --no-deps
 
-# Start HTTP and MCP server (with INT8 quantization on CPU and auto-loaded rules.yaml)
+# Start HTTP and MCP server (with INT8 quantization on CPU)
 .\.venv\Scripts\jev.exe serve `
   --model JonusNattapong/jev-my-bro-th1200 `
   --host 127.0.0.1 `
@@ -135,7 +166,7 @@ python -m venv .venv
   --quantize
 ```
 
-Check health (includes cache statistics and rule hit counts):
+Check health (includes cache statistics):
 
 ```powershell
 curl http://127.0.0.1:8787/health
@@ -196,24 +227,16 @@ On a Colab T4:
 requires calibration provenance in `rl_agent_config.json`, including the
 calibration dataset hash, before evaluating test.
 
-## Hybrid Cascaded Architecture
+## Two-Tier Cached Architecture
 
-Jev combines instant deterministic safety with neural semantic generalization across 3 tiers:
+Jev combines a cached lookup with neural semantic generalization across 2 tiers:
 
 ```text
 Incoming Operational Request / Tool Call
                    |
                    v
   +---------------------------------+
-  | Layer 1: Fast-Path Rule Engine  | < 1 ms  (Deterministic rules.yaml / hard blocks)
-  +---------------------------------+
-         | Match?
-        / \
-      YES  NO
-      /     \
-  [Return]   v
-  +---------------------------------+
-  | Layer 2: LRU Decision Cache     | ~15 ms  (1024-entry normalized LRU hit)
+  | Layer 1: LRU Decision Cache     | ~15 ms  (1024-entry normalized LRU hit)
   +---------------------------------+
          | Cache Hit?
         / \
@@ -221,7 +244,7 @@ Incoming Operational Request / Tool Call
       /     \
   [Return]   v
   +---------------------------------+
-  | Layer 3: Neural Model Inference | ~200-300 ms (CPU Dynamic INT8 Quantization)
+  | Layer 2: Neural Model Inference | ~200-300 ms (CPU Dynamic INT8 Quantization)
   |  - Base: convaiinnovations/laya |
   |  - Heads: choice / noul / score |
   +---------------------------------+
@@ -233,13 +256,21 @@ Incoming Operational Request / Tool Call
            else -> execute)
 ```
 
+There is no deterministic rule engine. Destructive commands and credential access are judged by the
+model like any other request, and a low-confidence model abstains toward `ask_user` rather than
+blocking.
+
 ## Automated Claude Code Governance Hook
 
-Jev can intercept tool execution proactively before shell commands or file writes run:
+Jev can observe tool execution before shell commands or file writes run:
 - Script: [`hooks/claude_pre_tool_use.py`](hooks/claude_pre_tool_use.py)
-- Configuration: `.claude/settings.json`
-- Protocol: returns JSON with `permissionDecision` (`allow`, `ask`, `deny`)
-- Full documentation: [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md)
+- Registration: user-level `~/.claude/settings.json` (absolute paths, applies to every project)
+- Configuration: this repository's `.claude/settings.json` holds `env` overrides only
+- **Advisory by default** (`JEV_ENFORCE=0`): the verdict is logged to stderr and nothing is blocked,
+  because the model does not currently meet the accuracy criteria
+- With `JEV_ENFORCE=1` the hook returns JSON `permissionDecision` (`allow`, `ask`, `deny`)
+- Full documentation: [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md), gate criteria in
+  [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md)
 
 ## Run the public JevBench tasks
 
@@ -269,13 +300,11 @@ revision, device, and summary when reporting the result.
 ## Repository layout
 
 ```text
-jevbro/                         core runtime, rules engine, caching, MCP server
+jevbro/                         core runtime, caching, MCP server
 hooks/claude_pre_tool_use.py    Claude Code PreToolUse governance hook
 configs/colab-th1200.yaml       reproducible T4 training config for th1200
 data/th_curated_1200/           Thai 1,200-case JSONL splits and README
-rules.example.yaml              template for custom fast-path rules
 scripts/build_th_curated_1200.py dataset builder and integrity checks
-scripts/analyze_rule_hit_rate.py rule engine telemetry analyzer
 scripts/probe_real_requests.py  qualitative real-request probe
 scripts/run_jevbench_public.py  JevBench public-task runner
 docs/model-cards/jev-my-bro-th1200.md  model card for th1200

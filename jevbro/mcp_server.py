@@ -307,7 +307,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path", default="/mcp")
     parser.add_argument("--feedback-db", default=str(DEFAULT_FEEDBACK_DB))
     parser.add_argument("--quantize", action="store_true", help="Enable INT8 quantization on CPU")
-    parser.add_argument("--rules-config", help="Path to rules.yaml or rules.json config file")
     return parser.parse_args()
 
 
@@ -321,13 +320,7 @@ def run_server(
     path: str = "/mcp",
     feedback_db: str | Path = DEFAULT_FEEDBACK_DB,
     quantize: bool = False,
-    rules_config: str | Path | None = None,
 ) -> None:
-    from jevbro.rules import load_rules_config
-
-    # Auto-load rules config if provided or present in working directory
-    load_rules_config(rules_config)
-
     agent = laya.Agent(model, device=device)
 
     # Optional dynamic INT8 quantization for CPU acceleration
@@ -368,7 +361,6 @@ def main() -> None:
         path=args.path,
         feedback_db=args.feedback_db,
         quantize=args.quantize,
-        rules_config=args.rules_config,
     )
 
 

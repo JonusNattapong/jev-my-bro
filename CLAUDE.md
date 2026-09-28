@@ -36,22 +36,28 @@ session starts. If `jev` fails to connect, start it and reconnect with `/mcp`:
 
 ## Language and Governance Engine
 
-The active model (`jev-my-bro-th1200`) was trained on 1,200 curated Thai governance
-cases with 86.75% accuracy and 100% Level-4 risk recall.
+The active model (`jev-my-bro-th1200`) was trained on 1,200 curated Thai governance cases.
+Measured on its own locked 100-case test split it scores **49.0%** action accuracy against a **59.0%**
+majority baseline, with score QWK 0.205 and a risk head that outputs ~2.4 for every input. It is
+advisory only: do not treat its verdict as authorization. See
+[`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
 Write the `context` for `jev_task_start` and `jev_decide` in Thai and pass
-`language="th"` for optimal semantic decisions.
+`language="th"` for optimal semantic decisions; never pin `language` in automated callers, because a
+mismatched pin silently changes the score.
 
-The server operates a 3-layer hybrid cascaded architecture:
-- **Layer 1 (Fast-Path Rules)**: Instant (<1ms) deterministic blocks for destructive acts (`rm -rf`) and allows for pure read-only inspections (`git status`). Custom rules can be placed in `rules.yaml` (see `rules.example.yaml`).
-- **Layer 2 (LRU Cache)**: 1024-slot in-memory cache returning ~15ms decisions on repeated commands without touching the neural model.
-- **Layer 3 (Neural Model)**: Semantic evaluation via `th1200` with INT8 dynamic quantization on CPU (~200–300ms).
+The server operates a 2-layer cached architecture:
+- **Layer 1 (LRU Cache)**: 1024-slot in-memory cache returning ~15ms decisions on repeated commands without touching the neural model.
+- **Layer 2 (Neural Model)**: Semantic evaluation via `th1200` with INT8 dynamic quantization on CPU (~200–300ms).
+
+There is no deterministic rule engine. The model is advisory and abstains on most inputs, so low-confidence decisions surface as `ask_user` rather than an automatic block.
 
 ## Automated PreToolUse Hook Integration
 
-This repository includes `.claude/settings.json` configured with `hooks/claude_pre_tool_use.py`.
-Every tool execution (`Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`) is proactively evaluated:
-- **Safe commands**: allowed automatically without latency overhead.
-- **Destructive operations**: rejected immediately (`permissionDecision: deny`).
-- **High-risk modifications**: prompt user for confirmation (`permissionDecision: ask`).
+`hooks/claude_pre_tool_use.py` is registered as a user-level `PreToolUse` hook in `~/.claude/settings.json` with absolute paths, so it observes every project; this repository's `.claude/settings.json` only sets `env` overrides (`JEV_ENFORCE=0`, `JEV_FAIL_MODE=ask`). The hook is **advisory by default and does not gate**; see [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
+Every tool execution (`Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`) is recorded:
+- **Verdicts are advisory.** The model currently scores below the majority baseline, so its verdict
+  is logged, not enforced.
+- `execute` / `ask_user` / `reject` are reported to stderr; nothing is blocked while
+  `JEV_ENFORCE=0`.
 
-See [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md) for full configuration and environment options (`JEV_TIMEOUT`, `JEV_FAIL_MODE`).
+See [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md) for full configuration and environment options (`JEV_TIMEOUT`, `JEV_ENFORCE`, `JEV_FAIL_MODE`).

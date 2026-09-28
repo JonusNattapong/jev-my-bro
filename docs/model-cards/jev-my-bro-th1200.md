@@ -14,7 +14,6 @@ tags:
 - safety
 - risk-classification
 - rlcd
-- fast-path
 - dynamic-quantization
 model-index:
 - name: Jev laya-th1200
@@ -28,17 +27,17 @@ model-index:
       split: test
     metrics:
     - type: accuracy
-      value: 0.8675
-      name: Overall accuracy
-    - type: choice_accuracy
-      value: 0.8800
-      name: Action choice accuracy
-    - type: noul_accuracy
-      value: 0.9350
-      name: Noul accuracy
-    - type: risk_l4_recall
-      value: 1.0000
-      name: Level 4 risk recall
+      value: 0.4900
+      name: Action choice accuracy (exact match, measured 2026-09-28)
+    - type: majority_baseline
+      value: 0.5900
+      name: Majority-class baseline on the same split
+    - type: score_qwk
+      value: 0.2051
+      name: Score QWK (risk 0-4)
+    - type: risk_spread
+      value: 0.22
+      name: Risk head mean spread between gold level 0 and gold level 4
 ---
 
 # Jev laya-th1200
@@ -69,31 +68,42 @@ automated tests, or audit logging.
 
 ## Evaluation Results
 
-Evaluated on the locked test set (100 cases, 400 typed decisions, 20 cases per risk level):
+Evaluated on the locked test set (100 cases, 400 typed decisions, 20 cases per risk level),
+re-measured on 2026-09-28 through the served MCP path; see `artifacts/live-test-metrics.json`:
 
 | Metric | Result |
 | --- | ---: |
-| Overall accuracy | **86.75%** |
-| Action choice accuracy | **88.00%** |
-| Noul accuracy (`needs_review` / `prohibited`) | **93.50%** |
-| Level 4 risk recall (Catastrophic/Destructive) | **100.00%** |
+| Action choice accuracy (exact match) | **49.0%** |
+| Majority-class baseline, same split | **59.0%** |
+| Action soft-target accuracy | 38.8% |
+| Score QWK (risk 0-4) | **0.205** |
+| Score within-one accuracy | 67.0% |
+| Risk head mean by gold level 0→4 | 2.31 / 2.33 / 2.43 / 2.45 / 2.53 |
 
-### Key Improvements over th960
-- **Agent Context Robustness**: Addresses false-positive `prohibited` spikes on routine multi-clause coding tasks containing phrases like "ผู้ใช้สั่งให้ทำแล้ว" or "ไม่มีการ push".
-- **100% L4 Recall**: Flawlessly catches destructive actions (force push to main, deleting shared branches, exfiltrating secrets, dropping production tables).
+This model is **advisory only**. It scores below the majority baseline on its own test split, its
+risk head outputs approximately the training mean regardless of input, and its output shifts with
+surface phrasing rather than meaning. It must not gate tool calls; see
+[`../ENFORCEMENT_GATE.md`](../ENFORCEMENT_GATE.md).
+
+Earlier revisions of this card reported 86.75% overall accuracy, 88.0% action accuracy, 93.5% noul
+accuracy, 100% Level-4 risk recall, and 95.0% within-one accuracy. No report reproduces those
+numbers; the best result available on this machine is 74.65% (`artifacts/v41/test-report.json`,
+untracked).
+
+### Intended improvements over th960
+- **Agent context coverage**: adds 120 longer agent-task cases (`th_17_agent_task_context_train.csv`,
+  mean 114 characters) to reduce false-positive `prohibited` spikes on multi-clause prompts.
+- **Unverified**: the previously claimed 100% Level-4 recall is not reproduced by the measurements
+  above and should not be relied on.
 
 ## Runtime Deployment Architecture
 
-In production and local agent environments (Claude Code, Antigravity, Codex), `th1200` operates as part of a **Hybrid Cascaded Architecture**:
+In production and local agent environments (Claude Code, Antigravity, Codex), `th1200` operates as part of a **Two-Tier Cached Architecture**:
 
-1. **Layer 1: Deterministic Fast-Path Rules (<1ms)**
-   - Regex and keyword matcher in `jevbro/rules.py`
-   - Configurable via `rules.yaml` / `.jev/rules.yaml`
-   - Handles ~48% of standard traffic (pure inspections allowed, catastrophic shell commands rejected immediately)
-2. **Layer 2: LRU In-Memory Decision Cache (~15ms)**
+1. **Layer 1: LRU In-Memory Decision Cache (~15ms)**
    - 1024-entry LRU cache in `jevbro/core.py` with whitespace normalization
    - Yields 140x speedups on repeated or similar tool executions
-3. **Layer 3: Neural Model Inference with INT8 Dynamic Quantization (~200–300ms on CPU)**
+2. **Layer 2: Neural Model Inference with INT8 Dynamic Quantization (~200–300ms on CPU)**
    - PyTorch dynamic INT8 quantization applied to `agent.model.encoder` (`--quantize`)
    - Reduces CPU latency by ~3–5x compared to standard FP32 execution
 

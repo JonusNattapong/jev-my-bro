@@ -137,7 +137,6 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--path", default="/mcp")
     serve.add_argument("--feedback-db", default="artifacts/feedback/jev_feedback.sqlite3")
     serve.add_argument("--quantize", action="store_true", help="Enable dynamic INT8 quantization on CPU")
-    serve.add_argument("--rules-config", help="Path to rules.yaml or rules.json config file")
 
     evaluate = sub.add_parser("eval", help="Write aggregate feedback metrics")
     evaluate.add_argument("--db", default="artifacts/feedback/jev_feedback.sqlite3")
@@ -186,7 +185,6 @@ def main(argv: list[str] | None = None) -> None:
             path=args.path,
             feedback_db=args.feedback_db,
             quantize=args.quantize,
-            rules_config=args.rules_config,
         )
         return
 

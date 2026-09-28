@@ -11,7 +11,6 @@ from uuid import uuid4
 from jevbro.feedback import FeedbackStore
 from jevbro.questions import detect_question_language
 from jevbro.router import DecideRequest, decision_response
-from jevbro.rules import evaluate_rules
 
 SourceAgent = str
 
@@ -111,61 +110,7 @@ class JevCore:
 
         self.cache_misses += 1
 
-        # Layer 1: Deterministic Fast-Path Rule Engine
-        rule_match = evaluate_rules(context)
-        if rule_match is not None:
-            raw_decision = rule_match.action
-            gated_decision = rule_match.action
-            confidence = 1.0
-            out = {
-                "engine": "jev-rules-fastpath",
-                "decision": raw_decision,
-                "confidence": confidence,
-                "needs_review": 1.0 if rule_match.needs_review else 0.0,
-                "prohibited": 1.0 if rule_match.prohibited else 0.0,
-                "risk": rule_match.risk,
-                "gated_decision": gated_decision,
-                "answers": {
-                    "action": {
-                        "type": "choice",
-                        "choice": raw_decision,
-                        "probabilities": {raw_decision: 1.0},
-                        "confidence": 1.0,
-                    },
-                    "needs_review": {
-                        "type": "noul",
-                        "noul": 1.0 if rule_match.needs_review else 0.0,
-                        "confidence": 1.0,
-                    },
-                    "prohibited": {
-                        "type": "noul",
-                        "noul": 1.0 if rule_match.prohibited else 0.0,
-                        "confidence": 1.0,
-                    },
-                    "risk": {
-                        "type": "score",
-                        "score": rule_match.risk,
-                        "probabilities": {str(int(rule_match.risk)): 1.0},
-                        "confidence": 1.0,
-                    },
-                },
-                "usage": {"input_tokens": 0, "output_tokens": 0},
-                "source_agent": norm_agent,
-                "raw_decision": raw_decision,
-                "abstain": False,
-                "abstain_threshold": threshold,
-                "advisory": True,
-                "fast_path": True,
-                "rule_matched": rule_match.rule_id,
-                "rule_reason": rule_match.reason,
-                "cache_hit": False,
-            }
-            self.cache[cache_key] = copy.deepcopy(out)
-            if len(self.cache) > self.cache_size:
-                self.cache.popitem(last=False)
-            return out, resolved_language, threshold
-
-        # Layer 2: Semantic Jev ML Model
+        # Semantic Jev ML Model
         kwargs: dict[str, Any] = {}
         if prohibited_threshold is not None:
             kwargs["prohibited_threshold"] = validate_threshold(prohibited_threshold)

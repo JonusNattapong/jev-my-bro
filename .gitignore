@@ -6,7 +6,10 @@ venv/
 .ipynb_checkpoints/
 .pytest_cache/
 .ruff_cache/
-artifacts/
+artifacts/*
+# Measurement evidence for the enforcement gate must be reviewable, so it is tracked even though
+# the rest of artifacts/ is ignored.
+!artifacts/live-test-metrics.json
 data/expanded/
 checkpoints/
 runs/

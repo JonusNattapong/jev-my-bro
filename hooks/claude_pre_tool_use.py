@@ -1,13 +1,15 @@
 ﻿#!/usr/bin/env python3
 """Claude Code PreToolUse Hook for Jev Governance.
 
-Intercepts Claude Code tool calls (Bash, Write, Edit, MultiEdit, NotebookEdit),
-evaluates safety via Jev (Layer 1 Fast-Path + Layer 2 Model), and enforces governance:
+Intercepts Claude Code tool calls (Bash, Write, Edit, MultiEdit, NotebookEdit) and asks Jev for a
+governance verdict:
 - execute    -> allow immediately
 - ask_user   -> JSON permissionDecision "ask" (Claude Code pauses for user)
 - reject     -> JSON permissionDecision "deny" (Claude Code blocks execution)
 
-Returns permissionDecision via stdout JSON for Claude Code.
+Enforcement is off by default (`JEV_ENFORCE=0`): the hook records the verdict to stderr and lets
+Claude Code apply its own permission rules. Set `JEV_ENFORCE=1` only after the measured criteria in
+`docs/ENFORCEMENT_GATE.md` are met — the model is not currently accurate enough to gate tool calls.
 """
 
 from __future__ import annotations
@@ -25,13 +27,64 @@ JEV_MCP_URL = os.environ.get("JEV_MCP_URL", "http://127.0.0.1:8787/mcp")
 JEV_TIMEOUT = float(os.environ.get("JEV_TIMEOUT", "8.0"))
 JEV_RETRY_TIMEOUT = float(os.environ.get("JEV_RETRY_TIMEOUT", "3.0"))
 JEV_FAIL_MODE = os.environ.get("JEV_FAIL_MODE", "open")  # "open", "deny", or "ask"
+JEV_ENFORCE = os.environ.get("JEV_ENFORCE", "0") not in ("0", "false", "False", "")
 JEV_FALLBACK_LOG = os.environ.get("JEV_FALLBACK_LOG", "artifacts/feedback/hook_fallback.log")
+
+
+MAX_SNIPPET_CHARS = 600
+
+_DOC_SUFFIXES = (".md", ".mdx", ".rst", ".txt", ".adoc")
+_CONFIG_SUFFIXES = (".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf")
+_CONFIG_NAMES = (".env", ".claude", ".github", "settings.json", "Dockerfile", "Makefile")
+
+
+def _collapse(text: Any, limit: int = MAX_SNIPPET_CHARS) -> str:
+    """Flatten text to a single bounded line so the model sees intent, not a wall of source."""
+    flat = " ".join(str(text or "").split())
+    if len(flat) > limit:
+        return flat[:limit] + " ..."
+    return flat
+
+
+def _file_kind(path: Any) -> str:
+    """Classify the target file so governance can weigh intent (docs vs config vs code)."""
+    normalized = str(path or "").replace("\\", "/").lower()
+    name = normalized.rsplit("/", 1)[-1]
+    if name.endswith(_DOC_SUFFIXES) or "/docs/" in normalized or "/doc/" in normalized:
+        return "documentation"
+    if name.endswith(_CONFIG_SUFFIXES) or any(token in normalized for token in _CONFIG_NAMES):
+        return "configuration"
+    if name.startswith("test_") or "_test." in name or "/tests/" in normalized:
+        return "test"
+    if name.endswith((".py", ".ts", ".tsx", ".js", ".go", ".rs", ".java", ".sh", ".ps1")):
+        return "source code"
+    return "unknown"
+
+
+def _proposed_text(tool_input: dict[str, Any]) -> str:
+    """Collect what the edit would actually introduce, across Write/Edit/MultiEdit shapes."""
+    edits = tool_input.get("edits")
+    if isinstance(edits, list) and edits:
+        parts = [
+            str(item.get("new_string") or item.get("new_str") or item.get("content") or "")
+            for item in edits
+            if isinstance(item, dict)
+        ]
+        return _collapse(" | ".join(part for part in parts if part))
+    return _collapse(
+        tool_input.get("new_string")
+        or tool_input.get("new_str")
+        or tool_input.get("content")
+        or ""
+    )
 
 
 def extract_context(tool_name: str, tool_input: dict[str, Any]) -> str:
     """Extract semantic context string from tool arguments.
 
-    For Write/Edit tools, only send path + size, not file contents.
+    For Write/Edit tools, send path, file kind, size, and a bounded snippet of the proposed
+    text. The snippet is what makes the request judgeable: a bare "Edit file X (replacing
+    ~0.0KB)" carries no intent and gates to reject on most inputs.
     """
     normalized_tool = (tool_name or "").lower()
 
@@ -42,17 +95,19 @@ def extract_context(tool_name: str, tool_input: dict[str, Any]) -> str:
 
     if normalized_tool in ("write", "writefile", "write_to_file", "create_file"):
         path = tool_input.get("file_path") or tool_input.get("path") or "unknown"
-        # Estimate size if content is present
-        content = tool_input.get("content") or ""
-        size_kb = len(str(content)) / 1024.0
-        return f"Write file {path} (~{size_kb:.1f}KB)"
+        content = str(tool_input.get("content") or "")
+        size_kb = len(content) / 1024.0
+        proposed = _proposed_text(tool_input)
+        suffix = f" writing: {proposed}" if proposed else ""
+        return f"Write {_file_kind(path)} file {path} (~{size_kb:.1f}KB){suffix}"
 
     if normalized_tool in ("edit", "editfile", "replace_file_content", "edit_file", "multiedit"):
         path = tool_input.get("file_path") or tool_input.get("path") or "unknown"
-        # For edits, extract just the intent, not the actual content
-        old_str = tool_input.get("old_string") or ""
-        size_kb = len(str(old_str)) / 1024.0
-        return f"Edit file {path} (replacing ~{size_kb:.1f}KB)"
+        old_str = str(tool_input.get("old_string") or "")
+        size_kb = len(old_str) / 1024.0
+        proposed = _proposed_text(tool_input)
+        suffix = f" writing: {proposed}" if proposed else ""
+        return f"Edit {_file_kind(path)} file {path} (replacing ~{size_kb:.1f}KB){suffix}"
 
     if normalized_tool in ("notebookcell", "run_notebook_cell"):
         code = str(tool_input.get("code") or tool_input.get("cell_source") or "").strip()
@@ -66,7 +121,7 @@ def extract_context(tool_name: str, tool_input: dict[str, Any]) -> str:
 
 
 def _write_fallback_log(context: str, error_kind: str) -> None:
-    """Append one JSON line recording why the hook fell back to local rules.
+    """Append one JSON line recording why the hook fell back to the fail mode.
 
     Logging failures are swallowed on purpose: the audit trail must never be
     able to crash or block a governance decision.
@@ -91,7 +146,11 @@ def _write_fallback_log(context: str, error_kind: str) -> None:
 
 
 def query_jev_remote(context: str, timeout: float) -> tuple[dict[str, Any] | None, str]:
-    """Call Jev MCP server via HTTP JSON-RPC.
+    """    Call Jev MCP server via HTTP JSON-RPC.
+
+    `language` is intentionally not sent: the server auto-detects it from the context. Pinning
+    it to "th" scored an English edit at prohibited=0.65 (reject) versus 0.18 (ask_user) on the
+    same context, so a wrong pin silently denies every English tool call.
 
     Returns (decision, error_kind). error_kind is "" on success, otherwise
     one of "timeout", "connection_error", or "unknown_error" so the caller
@@ -107,7 +166,6 @@ def query_jev_remote(context: str, timeout: float) -> tuple[dict[str, Any] | Non
             "arguments": {
                 "context": context,
                 "source_agent": "claude-code",
-                "language": "th",
             },
         },
     }
@@ -135,24 +193,11 @@ def query_jev_remote(context: str, timeout: float) -> tuple[dict[str, Any] | Non
 
 
 def query_jev_local_fallback(context: str) -> dict[str, Any]:
-    """Fallback to deterministic local rules if Jev server is offline or slow."""
-    try:
-        from jevbro.rules import evaluate_rules
+    """Decision when the Jev server is unreachable: apply the configured fail mode only.
 
-        match = evaluate_rules(context)
-        if match is not None:
-            return {
-                "engine": "jev-rules-fastpath-local",
-                "gated_decision": match.action,
-                "risk": match.risk,
-                "rule_matched": match.rule_id,
-                "rule_reason": match.reason,
-            }
-    except Exception:
-        pass
-
-    # Default based on fail mode (open or deny)
-    # Fail safely: deny/ask if server offline + rule miss
+    There is no deterministic rule engine behind this fallback anymore, so an offline server
+    means the hook can no longer distinguish safe from destructive calls.
+    """
     default_decision = "execute" if JEV_FAIL_MODE == "open" else ("reject" if JEV_FAIL_MODE == "deny" else "ask_user")
     return {
         "engine": "fallback-offline",
@@ -163,7 +208,7 @@ def query_jev_local_fallback(context: str) -> dict[str, Any]:
 
 def evaluate_action(context: str) -> dict[str, Any]:
     """Evaluate context through Jev server, with one bounded retry on timeout,
-    falling back to local rules only after both attempts fail.
+    falling back to the configured fail mode only after both attempts fail.
     """
     decision, error_kind = query_jev_remote(context, JEV_TIMEOUT)
 
@@ -193,9 +238,9 @@ def encode_permission_decision(
 
     # Always surface the evaluated context so the reason is actionable, not just a verdict.
     if reason:
-        reason_str = f"[{engine}] Risk={risk:.1f}/4 | {reason} | context: {context[:80]}"
+        reason_str = f"[{engine}] Risk={risk:.1f}/4 | {reason} | context: {context[:160]}"
     else:
-        reason_str = f"[{engine}] {permission} | context: {context[:80]}"
+        reason_str = f"[{engine}] {permission} | context: {context[:160]}"
 
     output = {
         "hookSpecificOutput": {
@@ -254,7 +299,15 @@ def main() -> None:
     gated = decision.get("gated_decision", "execute")
     risk = decision.get("risk", 0.0)
     engine = decision.get("engine", "jev")
-    reason = decision.get("rule_reason", "")
+    reason = ""
+
+    # Advisory mode (default): record the decision but never gate the tool call. The model
+    # currently scores below the majority baseline on its own test split and its risk head is
+    # flat, so enforcing its verdict would block work without protecting anything. Re-enable
+    # with JEV_ENFORCE=1 only after the criteria in docs/ENFORCEMENT_GATE.md are met.
+    if not JEV_ENFORCE:
+        print(f"[jev] advisory | {gated} | risk={risk:.2f} | {context[:120]}", file=sys.stderr)
+        sys.exit(0)
 
     # Output permission decision as JSON for Claude Code
     print(encode_permission_decision(gated, context, risk, reason, engine))

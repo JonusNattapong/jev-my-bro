@@ -75,8 +75,8 @@ The Hugging Face dataset is
 `JonusNattapong/jev-my-bro-dataset`.
 
 The latest Thai model and dataset:
-`JonusNattapong/jev-my-bro-th1200` (1,200 curated Thai cases including agent contexts,
-86.75% accuracy, 100% L4 risk recall) and
+`JonusNattapong/jev-my-bro-th1200` (1,200 curated Thai cases including agent contexts;
+49.0% measured action accuracy against a 59.0% majority baseline, advisory only) and
 `JonusNattapong/jev-my-bro-th960` with its benchmark visualization in
 [`assets/laya-th960-results.svg`](assets/laya-th960-results.svg).
 
