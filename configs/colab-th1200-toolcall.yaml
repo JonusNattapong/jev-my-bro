@@ -1,0 +1,35 @@
+# Combined Thai-prose + English tool-call run.
+#
+# Adds the tool-call surface to the th1200 corpus so the model can see the literal shell
+# command and file-edit strings the PreToolUse hook actually sends. See
+# data/tool_call_80/README.md for why that surface was missing and for the current
+# limitations of the slice.
+#
+# Corpora are listed as comma-separated paths and stay separate on disk, so split
+# provenance and each corpus's own locked test split are preserved.
+#
+# This config trains on train splits only. data/th_curated_1200/test.jsonl and
+# data/tool_call_80/test.jsonl must never be passed to --train or --validation; the
+# locked numbers reported in README.md depend on them being untouched.
+train: data/th_curated_1200/train.jsonl,data/tool_call_80/train.jsonl
+validation: data/th_curated_1200/validation.jsonl,data/tool_call_80/validation.jsonl
+base_model: convaiinnovations/laya-multilingual
+output: artifacts/laya-th1200-toolcall
+epochs: 6
+micro_batch: 4
+grad_accum: 8
+group_size: 4
+checkpoint_each_epoch: true
+english_weight: 1.0
+choice_weight: 1.5
+score_weight: 2.5
+score_ce_weight: 0.5
+score_rps_weight: 1.0
+score_class_balance_beta: 0.995
+score_cumulative_weight: 1.0
+encoder_lr: 0.00002
+head_lr: 0.0001
+sigma_start: 0.4
+sigma_end: 0.1
+seed: 42
+device: cuda

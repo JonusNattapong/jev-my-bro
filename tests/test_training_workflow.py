@@ -6,6 +6,7 @@ import numpy as np
 from jevbro.config import load_config
 from jevbro.evaluate import multiclass_nll
 from jevbro.publish import main as publish_main
+from jevbro.train import split_paths
 
 
 def test_colab_config_is_loadable_and_reproducible() -> None:
@@ -13,6 +14,28 @@ def test_colab_config_is_loadable_and_reproducible() -> None:
     assert config["seed"] == 42
     assert config["device"] == "cuda"
     assert config["train"].endswith("train.jsonl")
+
+
+def test_toolcall_config_trains_on_both_corpora_and_never_on_test_splits() -> None:
+    config = load_config(Path(__file__).parents[1] / "configs" / "colab-th1200-toolcall.yaml")
+    train_paths = split_paths(config["train"])
+    validation_paths = split_paths(config["validation"])
+
+    assert "data/th_curated_1200/train.jsonl" in train_paths
+    assert "data/tool_call_80/train.jsonl" in train_paths
+    assert config["score_cumulative_weight"] > 0
+    for path in train_paths + validation_paths:
+        assert not path.endswith("test.jsonl"), f"locked test split must stay untouched: {path}"
+        assert not path.endswith("calibration.jsonl"), f"calibration split must stay untouched: {path}"
+
+
+def test_split_paths_dedupes_and_rejects_empty() -> None:
+    assert split_paths("a.jsonl, b.jsonl ,a.jsonl") == ["a.jsonl", "b.jsonl"]
+    try:
+        split_paths(" , ")
+    except ValueError:
+        return
+    raise AssertionError("empty spec must raise")
 
 
 def test_th500_config_keeps_ordinal_score_objective_enabled() -> None:

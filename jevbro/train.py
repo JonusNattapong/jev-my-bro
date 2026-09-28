@@ -64,8 +64,16 @@ def is_better_checkpoint(candidate: dict, best: dict | None) -> bool:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fine-tune Laya with RLCD on jev-my-bro data")
     parser.add_argument("--config", default=None, help="YAML config with the same keys as CLI options")
-    parser.add_argument("--train", default="data/train.jsonl")
-    parser.add_argument("--validation", default="data/validation.jsonl")
+    parser.add_argument(
+        "--train",
+        default="data/train.jsonl",
+        help="JSONL path, or a comma-separated list of paths to train on several corpora",
+    )
+    parser.add_argument(
+        "--validation",
+        default="data/validation.jsonl",
+        help="JSONL path, or a comma-separated list of paths",
+    )
     parser.add_argument("--base-model", default=DEFAULT_BASE)
     parser.add_argument("--output", default="artifacts/laya-model")
     parser.add_argument("--epochs", type=int, default=4)
@@ -96,6 +104,33 @@ def seed_everything(seed: int) -> None:
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+
+def split_paths(spec: str) -> list[str]:
+    """Parse a comma-separated corpus spec into ordered, de-duplicated paths."""
+    paths: list[str] = []
+    for raw in str(spec or "").split(","):
+        candidate = raw.strip()
+        if candidate and candidate not in paths:
+            paths.append(candidate)
+    if not paths:
+        raise ValueError(f"no dataset paths in {spec!r}")
+    return paths
+
+
+def load_items_multi(tokenizer, cfg: dict, spec: str) -> tuple[list[dict], dict[str, int]]:
+    """Load items from one or more corpora without merging the files on disk.
+
+    Keeping the corpora separate on disk preserves split provenance: a reader can always tell
+    which corpus a case came from, and each corpus keeps its own independent test split.
+    """
+    items: list[dict] = []
+    per_path: dict[str, int] = {}
+    for path in split_paths(spec):
+        loaded = load_items(tokenizer, cfg, path)
+        per_path[path] = len(loaded)
+        items.extend(loaded)
+    return items, per_path
 
 
 @torch.no_grad()
@@ -207,10 +242,12 @@ def main() -> None:
     model.head_checkpointing = True
     model.train()
 
-    train_items = load_items(tokenizer, cfg, args.train)
-    validation_items = load_items(tokenizer, cfg, args.validation)
+    train_items, train_breakdown = load_items_multi(tokenizer, cfg, args.train)
+    validation_items, validation_breakdown = load_items_multi(tokenizer, cfg, args.validation)
     print(f"[train] base={resolved_base}", flush=True)
     print(f"[train] sequences={len(train_items)} validation={len(validation_items)}", flush=True)
+    print(f"[train] train sources={train_breakdown}", flush=True)
+    print(f"[train] validation sources={validation_breakdown}", flush=True)
     score_labels = [item["label"] for item in train_items if item["qtype"] == QTYPES["score"]]
     score_level_weights = torch.tensor(
         effective_number_weights(score_labels, args.score_class_balance_beta, levels=5),
@@ -395,6 +432,8 @@ def main() -> None:
             "seed": args.seed,
             "train_sequences": len(train_items),
             "validation_sequences": len(validation_items),
+            "train_sources": train_breakdown,
+            "validation_sources": validation_breakdown,
             "score_ce_weight": args.score_ce_weight,
             "score_rps_weight": args.score_rps_weight,
             "score_class_balance_beta": args.score_class_balance_beta,

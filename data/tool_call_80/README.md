@@ -42,7 +42,11 @@ python scripts/validate_dataset.py --root data/tool_call_80
 
 ## Integration
 
-This slice is not referenced by any training config yet. To include it, extend the `train` and
-`validation` paths in a config (for example `configs/colab-th1200.yaml`) rather than merging files,
-so split provenance stays auditable. Keep `data/th_curated_1200/test.jsonl` untouched: it is the
-locked split used for the existing reported metrics.
+Referenced by `configs/colab-th1200-toolcall.yaml`, which trains on both this slice and
+`data/th_curated_1200`. `--train` and `--validation` accept a comma-separated path list, and the
+training run prints a per-corpus sequence-count breakdown, so corpora stay separate on disk and split
+provenance is preserved.
+
+Keep `data/th_curated_1200/test.jsonl` and `data/tool_call_80/test.jsonl` out of training and
+calibration: those are the locked splits the reported metrics depend on. A test asserts the config
+never references them.

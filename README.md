@@ -227,6 +227,18 @@ On a Colab T4:
 requires calibration provenance in `rl_agent_config.json`, including the
 calibration dataset hash, before evaluating test.
 
+`--train` and `--validation` accept a comma-separated list of paths, so several corpora can be
+trained on together without merging the files on disk. Each run prints a per-corpus sequence-count
+breakdown. The next round uses the combined corpus:
+
+```bash
+!python -m jevbro.train --config configs/colab-th1200-toolcall.yaml
+```
+
+That config trains on `data/th_curated_1200` plus `data/tool_call_80`, the tool-call slice that
+covers the literal shell-command and file-edit strings the hook sends. A test asserts the config
+never references a `test.jsonl` or `calibration.jsonl` split.
+
 ## Two-Tier Cached Architecture
 
 Jev combines a cached lookup with neural semantic generalization across 2 tiers:
@@ -303,7 +315,9 @@ revision, device, and summary when reporting the result.
 jevbro/                         core runtime, caching, MCP server
 hooks/claude_pre_tool_use.py    Claude Code PreToolUse governance hook
 configs/colab-th1200.yaml       reproducible T4 training config for th1200
+configs/colab-th1200-toolcall.yaml  th1200 corpus plus the tool-call slice
 data/th_curated_1200/           Thai 1,200-case JSONL splits and README
+data/tool_call_80/              80 English tool-call cases and provenance notes
 scripts/build_th_curated_1200.py dataset builder and integrity checks
 scripts/probe_real_requests.py  qualitative real-request probe
 scripts/run_jevbench_public.py  JevBench public-task runner
