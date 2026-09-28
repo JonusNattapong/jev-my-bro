@@ -59,7 +59,7 @@ def test_enforcement_gate_criteria_name_the_metrics_the_training_log_reports() -
         "validation.noul.needs_review.separation",
     ):
         assert metric in gate, f"gate criterion must name {metric}"
-    assert "spread of 0.22" in gate
+    assert "1.474" in gate, "gate must report the corrected risk spread"
 
 
 

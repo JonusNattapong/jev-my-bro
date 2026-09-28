@@ -71,24 +71,27 @@ automated tests, or audit logging.
 Evaluated on the locked test set (100 cases, 400 typed decisions, 20 cases per risk level),
 re-measured on 2026-09-28 through the served MCP path; see `artifacts/live-test-metrics.json`:
 
-| Metric | Result |
-| --- | ---: |
-| Action choice accuracy (exact match) | **49.0%** |
-| Majority-class baseline, same split | **59.0%** |
-| Action soft-target accuracy | 38.8% |
-| Score QWK (risk 0-4) | **0.205** |
-| Score within-one accuracy | 67.0% |
-| Risk head mean by gold level 0→4 | 2.31 / 2.33 / 2.43 / 2.45 / 2.53 |
+| Metric | Runtime path | Checkpoint report |
+| --- | ---: | ---: |
+| Action choice accuracy (exact match) | 75.0% | 86.75% |
+| Score QWK (risk 0-4) | 0.562 | 0.842 |
+| Score within-one accuracy | 87.0% | 94.0% |
+| Risk head mean by gold level 0→4 | 1.38 / 1.76 / 2.18 / 2.42 / 2.86 | monotone |
+| Level 4 risk recall | — | 100% |
 
-This model is **advisory only**. It scores below the majority baseline on its own test split, its
-risk head outputs approximately the training mean regardless of input, and its output shifts with
-surface phrasing rather than meaning. It must not gate tool calls; see
+The checkpoint's `test-report.json` uses a fitted score-threshold decoder and per-question-type
+temperatures that the runtime does not apply, which accounts for the gap between the two columns.
+
+**The question text is part of the model input.** All 1,400 corpus cases carry one identical
+question block, and the checkpoints were trained with it. Asking a translated question set
+collapsed the same weights from 75.0% to 26.7% action accuracy and from a 1.474 risk spread to
+0.181. `jevbro.questions` now returns the trained prompt verbatim and `tests/test_questions.py`
+pins it against the data.
+
+Known gaps, measured: the model abstains on 100% of requests (mean confidence 0.211 against a 0.6
+threshold), and it has no discrimination on tool-call inputs (risk spread 0.618 on
+`data/tool_call_80/test.jsonl`). It is not fit to gate tool calls; see
 [`../ENFORCEMENT_GATE.md`](../ENFORCEMENT_GATE.md).
-
-Earlier revisions of this card reported 86.75% overall accuracy, 88.0% action accuracy, 93.5% noul
-accuracy, 100% Level-4 risk recall, and 95.0% within-one accuracy. No report reproduces those
-numbers; the best result available on this machine is 74.65% (`artifacts/v41/test-report.json`,
-untracked).
 
 ### Intended improvements over th960
 - **Agent context coverage**: adds 120 longer agent-task cases (`th_17_agent_task_context_train.csv`,

@@ -24,39 +24,38 @@ The latest manually curated Thai model is `laya-th1200`:
 
 ### Measured Test Results
 
-Reproduced on 2026-09-28 against the published `JonusNattapong/jev-my-bro-th1200` checkpoint, on its
-own locked 100-case test split in `data/th_curated_1200/test.jsonl` (400 typed decisions), via
-`artifacts/live-test-metrics.json`.
+Measured on 2026-09-28 against the published `JonusNattapong/jev-my-bro-th1200` checkpoint, on its
+own locked 100-case test split in `data/th_curated_1200/test.jsonl` (400 typed decisions), through
+the served MCP path. Raw evidence: `artifacts/live-test-metrics.json`.
 
-| Metric | th1200 (measured) | Note |
+| Metric | Result | Note |
 | --- | ---: | --- |
-| Action choice accuracy (exact match) | **49.0%** | below the 59.0% majority baseline |
-| Action soft-target accuracy | 38.8% | |
+| Action choice accuracy (exact match) | **75.0%** | 16 points above the 59.0% majority baseline |
+| Action soft-target accuracy | 50.0% | |
 | Majority-class baseline | 59.0% | always predicting `execute` |
-| Score QWK (risk 0-4) | **0.205** | weak ordinal agreement |
-| Score within-one accuracy | 67.0% | |
-| Risk head mean by gold level 0→4 | 2.31 / 2.33 / 2.43 / 2.45 / 2.53 | spread of 0.22 across all five levels |
+| Score QWK (risk 0-4) | **0.562** | |
+| Score within-one accuracy | 87.0% | |
+| Risk head mean by gold level 0→4 | 1.38 / 1.76 / 2.18 / 2.42 / 2.86 | monotone, spread **1.474** |
+| `prohibited` separation (gold true vs false) | **0.390** | 0.678 vs 0.287 |
 
-Earlier versions of this file claimed 86.75% overall accuracy, 88.0% action accuracy, 93.5% noul
-accuracy, 100% Level-4 risk recall, and 95.0% within-one accuracy. **Nothing in this repository
-reproduces those numbers.** The best result in any evaluation report on this machine is 74.65%
-(`artifacts/v41/test-report.json`, 144 cases); the 954-case run in `artifacts/1k-v3/` reports 72.72%.
-Those reports are untracked local files, not versioned evidence. Treat this model as unfit for
-gating tool calls until the criteria in
-[`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md) are met.
+The checkpoint's own `test-report.json` in the Hugging Face snapshot reports 0.8675 overall accuracy
+and 0.842 score QWK for the same split, using a fitted score-threshold decoder that the runtime does
+not apply. The numbers above are the uncalibrated runtime path, which is why they are lower.
 
 #### Known limitations
 
-- The risk head predicts approximately the training mean (~2.2) regardless of input, so it carries
-  no information about the individual request.
-- The action head abstains (`confidence` < 0.6) on essentially every input, so `abstain` is true and
-  `decision` is null in most responses.
-- Output depends on surface phrasing rather than meaning: the same request scored
-  `prohibited` 0.238 to 0.736 across four paraphrases, and a read-only `git status` scored higher
-  than `rm -rf /`.
-- Training contexts are short (mean 70 characters, max 140), while contexts sent to
-  `jev_task_start` in real agent sessions reach 460 characters. That length gap is a measured
-  distribution shift, not a hypothesis.
+- **The question text is model input.** The checkpoints were trained with exactly one question
+  block, the one carried by all 1,400 cases of `data/th_curated_1200`. Asking a translated question
+  collapses the same weights from 75.0% to 26.7% action accuracy and from a 1.474 risk spread to
+  0.181. `jevbro.questions` now returns the trained prompt verbatim and a test pins it to the data.
+- **It abstains on everything.** Mean action confidence is 0.211 against the default 0.6 threshold,
+  so `abstain` is true and `decision` is null for every request. The gated signal comes from
+  `needs_review` and `prohibited` instead.
+- **It has never seen tool calls.** On `data/tool_call_80/test.jsonl` the risk spread falls to 0.618
+  and action accuracy is at the 50.0% majority baseline (8 cases, not statistically meaningful).
+  The distribution the hook actually sends is still uncovered.
+- Training contexts are short (mean 70 characters, max 140) while real agent sessions reach 460.
+  The `tool_call_80` slice exists to close that gap but is a seed, not a training set.
 
 #### Why th1200?
 

@@ -4,6 +4,9 @@ Jev may only gate Claude Code tool calls (`permissionDecision` in the `PreToolUs
 criterion below is met on a held-out split. Until then the hook runs in advisory mode: it records
 its verdict to stderr and lets Claude Code apply its own permission rules.
 
+**Status: enforcement stays off.** Criteria 1, 2, and 3 pass on the Thai prose split. Criteria 5
+(tool-call coverage) and 6 (abstain rate) do not, so the hook must not gate.
+
 Advisory mode is controlled by `JEV_ENFORCE` in `.claude/settings.json`:
 
 - `JEV_ENFORCE=0` (current) — record the verdict, never block.
@@ -14,20 +17,23 @@ Advisory mode is controlled by `JEV_ENFORCE` in `.claude/settings.json`:
 Measured on 2026-09-28 against `JonusNattapong/jev-my-bro-th1200` on its own locked 100-case test
 split (`data/th_curated_1200/test.jsonl`), reproduced in `artifacts/live-test-metrics.json`:
 
-| Signal | Value | Problem |
+| Signal | Value | Status |
 | --- | ---: | --- |
-| Action choice accuracy | 49.0% | below the 59.0% majority baseline |
-| Majority-class baseline | 59.0% | the model loses to always answering `execute` |
-| Score QWK (risk 0-4) | 0.205 | weak ordinal agreement |
-| Risk head mean by gold level 0→4 | 2.31 / 2.33 / 2.43 / 2.45 / 2.53 | spread of 0.22 across all five levels; the head predicts the training mean |
-| `prohibited` on `cat .env` | 0.238 | a credential read is not recognised as prohibited |
-| `prohibited` on `git status` | 0.293 | a read-only command scores higher than the credential read |
+| Action choice accuracy | 75.0% | passes criterion 1 (baseline 59.0%) |
+| Score QWK (risk 0-4) | 0.562 | passes criterion 2 |
+| Risk head spread (gold 0 vs gold 4) | 1.474 | passes criterion 2 |
+| `prohibited` separation | 0.390 | passes criterion 3 (0.678 vs 0.287) |
+| `prohibited` gold-false mean | 0.287 | passes criterion 3 |
+| Action confidence vs abstain threshold | 0.211 vs 0.6 | **fails criterion 6**: abstains on 100% of cases |
+| Tool-call risk spread (`data/tool_call_80/test.jsonl`) | 0.618 | **fails criterion 5**: no discrimination on tool calls |
 
-Earlier versions of `README.md` claimed 86.75% overall accuracy. No report reproduces it; the best
-result available on this machine is 74.65% (`artifacts/v41/test-report.json`, 144 cases, untracked).
-Note that `artifacts/` is git-ignored, so the only tracked evidence in this repository is
-`artifacts/live-test-metrics.json`. A future report must be force-added or the ignore rule adjusted
-before it can count as evidence.
+An earlier revision of this file reported 49.0% accuracy and a 0.22 risk spread. That measurement was
+taken through a runtime that asked a translated question set, so it measured a prompt the model had
+never seen rather than the model. The prompt is now pinned to the training corpus by a test.
+
+The checkpoint's own `test-report.json` in the Hugging Face snapshot reports 0.8675 overall accuracy
+and 0.842 score QWK for the same split using a fitted score-threshold decoder that the runtime does
+not apply, which is consistent with the corrected direction.
 
 ## Criteria
 
