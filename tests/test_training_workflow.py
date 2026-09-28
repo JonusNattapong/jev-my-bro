@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from jevbro.config import load_config
 from jevbro.evaluate import multiclass_nll
@@ -37,8 +38,6 @@ def test_abstain_threshold_falls_back_only_when_calibration_is_absent() -> None:
 
 def test_fit_abstain_threshold_prefers_answering_while_keeping_accuracy() -> None:
     """The fit must minimise abstention subject to an accuracy floor, not maximise abstention."""
-    import numpy as np
-
     def row(correct, peak):
         probs = np.array([peak, (1 - peak) / 2, (1 - peak) / 2])
         target = [0.0, 0.0, 0.0]
@@ -61,6 +60,57 @@ def test_smoke_config_is_one_epoch_and_never_publishes() -> None:
     assert config["epochs"] == 1
     assert "smoke" in config["output"]
     assert len(split_paths(config["train"])) == 2
+
+
+def test_collect_noul_scores_indexes_filtered_tensors_by_offset() -> None:
+    """Regression: batch positions must not be used to index the noul-filtered tensors.
+
+    The original loop did, and validation crashed with IndexError after a full epoch whenever
+    a batch mixed question types, which is every batch. This reproduces that exact shape.
+    """
+    import torch
+
+    from jevbro.train import collect_noul_scores
+
+    # Batch of three: score at position 0, then two noul rows at positions 1 and 2.
+    chunk = [{"qid": "risk"}, {"qid": "needs_review"}, {"qid": "prohibited"}]
+    selected_index = torch.tensor([1, 2])
+    noul_probs = torch.tensor([0.8, 0.2])
+    noul_labels = torch.tensor([1, 0])
+    buckets = {
+        "needs_review": {"true": [], "false": []},
+        "prohibited": {"true": [], "false": []},
+    }
+
+    collect_noul_scores(chunk, selected_index, noul_probs, noul_labels, buckets)
+
+    assert buckets["needs_review"]["true"] == pytest.approx([0.8])
+    assert buckets["needs_review"]["false"] == []
+    assert buckets["prohibited"]["true"] == []
+    assert buckets["prohibited"]["false"] == pytest.approx([0.2])
+
+
+def test_collect_noul_scores_handles_a_leading_noul_row() -> None:
+    import torch
+
+    from jevbro.train import collect_noul_scores
+
+    chunk = [{"qid": "needs_review"}, {"qid": "risk"}, {"qid": "prohibited"}]
+    buckets = {
+        "needs_review": {"true": [], "false": []},
+        "prohibited": {"true": [], "false": []},
+    }
+
+    collect_noul_scores(
+        chunk,
+        torch.tensor([0, 2]),
+        torch.tensor([0.3, 0.9]),
+        torch.tensor([0, 1]),
+        buckets,
+    )
+
+    assert buckets["needs_review"]["false"] == pytest.approx([0.3])
+    assert buckets["prohibited"]["true"] == pytest.approx([0.9])
 
 
 def test_head_diagnostics_flag_a_head_that_only_predicts_the_mean() -> None:

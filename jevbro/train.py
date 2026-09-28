@@ -171,6 +171,32 @@ def summarize_head_diagnostics(
     return score_report, noul_report
 
 
+def collect_noul_scores(
+    chunk: list[dict],
+    selected_index: torch.Tensor,
+    noul_probs: torch.Tensor,
+    noul_labels: torch.Tensor,
+    noul_scores: dict[str, dict[str, list[float]]],
+) -> None:
+    """Bucket noul predictions by question id and gold label.
+
+    `selected_index` holds positions in the whole batch, while `noul_probs` and `noul_labels`
+    are already filtered down to the noul rows, so the two are addressed differently: the batch
+    position finds the question id, the offset finds the prediction. Indexing the filtered
+    tensors with the batch position raises IndexError as soon as a batch mixes question types,
+    which is every batch in practice. The previous version did exactly that and crashed after a
+    full epoch of training.
+    """
+    positions = selected_index.tolist()
+    for offset, position in enumerate(positions):
+        qid = chunk[position]["qid"]
+        bucket = noul_scores.get(qid)
+        if bucket is None:
+            continue
+        gold_true = int(noul_labels[offset].item()) == 1
+        bucket["true" if gold_true else "false"].append(float(noul_probs[offset].item()))
+
+
 @torch.no_grad()
 def validation_metrics(model, items: list[dict], tokenizer, device: torch.device, batch_size: int = 16) -> dict:
     model.eval()
@@ -236,17 +262,7 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
         is_noul = qtype == QTYPES["noul"]
         if is_noul.any():
             selected_index = is_noul.nonzero(as_tuple=True)[0]
-            noul_probs = probs[is_noul][:, 1]
-            noul_labels = labels[is_noul]
-            for position, predicted in zip(
-                selected_index.cpu().tolist(), noul_probs.cpu().tolist()
-            ):
-                qid = chunk[position]["qid"]
-                bucket = noul_scores.get(qid)
-                if bucket is None:
-                    continue
-                gold_true = int(noul_labels[position].item()) == 1
-                bucket["true" if gold_true else "false"].append(float(predicted))
+            collect_noul_scores(chunk, selected_index, probs[is_noul][:, 1], labels[is_noul], noul_scores)
         total += len(labels)
     model.train()
     recalls = []
