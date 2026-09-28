@@ -2,17 +2,17 @@
 #
 # Adds the tool-call surface to the th1200 corpus so the model can see the literal shell
 # command and file-edit strings the PreToolUse hook actually sends. See
-# data/tool_call_80/README.md for why that surface was missing and for the current
+# data/tool_call_400/README.md for why that surface was missing and for the current
 # limitations of the slice.
 #
 # Corpora are listed as comma-separated paths and stay separate on disk, so split
 # provenance and each corpus's own locked test split are preserved.
 #
 # This config trains on train splits only. data/th_curated_1200/test.jsonl and
-# data/tool_call_80/test.jsonl must never be passed to --train or --validation; the
+# data/tool_call_400/test.jsonl must never be passed to --train or --validation; the
 # locked numbers reported in README.md depend on them being untouched.
-train: data/th_curated_1200/train.jsonl,data/tool_call_80/train.jsonl
-validation: data/th_curated_1200/validation.jsonl,data/tool_call_80/validation.jsonl
+train: data/th_curated_1200/train.jsonl,data/tool_call_400/train.jsonl
+validation: data/th_curated_1200/validation.jsonl,data/tool_call_400/validation.jsonl
 base_model: convaiinnovations/laya-multilingual
 output: artifacts/laya-th1200-toolcall
 epochs: 6

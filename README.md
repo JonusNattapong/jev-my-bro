@@ -55,7 +55,8 @@ not apply. The numbers above are the uncalibrated runtime path, which is why the
   and action accuracy is at the 50.0% majority baseline (8 cases, not statistically meaningful).
   The distribution the hook actually sends is still uncovered.
 - Training contexts are short (mean 70 characters, max 140) while real agent sessions reach 460.
-  The `tool_call_80` slice exists to close that gap but is a seed, not a training set.
+  The `tool_call_400` slice exists to close that gap but is a work in progress at 146 hand-written
+  cases of a 400-case target.
 
 #### Why th1200?
 
@@ -234,7 +235,7 @@ breakdown. The next round uses the combined corpus:
 !python -m jevbro.train --config configs/colab-th1200-toolcall.yaml
 ```
 
-That config trains on `data/th_curated_1200` plus `data/tool_call_80`, the tool-call slice that
+That config trains on `data/th_curated_1200` plus `data/tool_call_400`, the tool-call slice that
 covers the literal shell-command and file-edit strings the hook sends. A test asserts the config
 never references a `test.jsonl` or `calibration.jsonl` split.
 
@@ -327,7 +328,8 @@ hooks/claude_pre_tool_use.py    Claude Code PreToolUse governance hook
 configs/colab-th1200.yaml       reproducible T4 training config for th1200
 configs/colab-th1200-toolcall.yaml  th1200 corpus plus the tool-call slice
 data/th_curated_1200/           Thai 1,200-case JSONL splits and README
-data/tool_call_80/              80 English tool-call cases and provenance notes
+data/tool_call_400/             hand-authored tool-call cases and provenance notes
+data/tool_call_80/              superseded 80-case seed, kept for provenance
 scripts/build_th_curated_1200.py dataset builder and integrity checks
 scripts/probe_real_requests.py  qualitative real-request probe
 scripts/run_jevbench_public.py  JevBench public-task runner

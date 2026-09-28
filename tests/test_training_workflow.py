@@ -130,11 +130,32 @@ def test_toolcall_config_trains_on_both_corpora_and_never_on_test_splits() -> No
     validation_paths = split_paths(config["validation"])
 
     assert "data/th_curated_1200/train.jsonl" in train_paths
-    assert "data/tool_call_80/train.jsonl" in train_paths
+    assert "data/tool_call_400/train.jsonl" in train_paths
     assert config["score_cumulative_weight"] > 0
     for path in train_paths + validation_paths:
         assert not path.endswith("test.jsonl"), f"locked test split must stay untouched: {path}"
         assert not path.endswith("calibration.jsonl"), f"calibration split must stay untouched: {path}"
+
+
+def test_toolcall_corpus_covers_every_split_and_risk_level() -> None:
+    """A split that only contains one risk level cannot evaluate anything.
+
+    The first apportionment attempt produced a 3-case reject-only test split, which passed
+    schema validation while being useless.
+    """
+    root = Path(__file__).parents[1] / "data" / "tool_call_400"
+    for split in ("train", "validation", "calibration", "test"):
+        rows = [
+            json.loads(line)
+            for line in (root / f"{split}.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(rows) >= 10, f"{split} is too small to evaluate: {len(rows)}"
+        risks = {row["gold"]["risk"]["label"] for row in rows}
+        assert risks == {"0", "1", "2", "3", "4"}, f"{split} misses risk levels: {sorted(risks)}"
+        actions = {row["gold"]["action"]["label"] for row in rows}
+        assert actions == {"execute", "ask_user", "reject"}, f"{split} misses actions: {sorted(actions)}"
+
 
 
 def test_split_paths_dedupes_and_rejects_empty() -> None:

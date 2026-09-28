@@ -8,8 +8,8 @@
 # 4.5% of training. A full run on this mix is not expected to satisfy enforcement criterion
 # 5 (no discrimination on tool-call inputs) and should not be used to judge whether the
 # approach works.
-train: data/th_curated_1200/train.jsonl,data/tool_call_80/train.jsonl
-validation: data/th_curated_1200/validation.jsonl,data/tool_call_80/validation.jsonl
+train: data/th_curated_1200/train.jsonl,data/tool_call_400/train.jsonl
+validation: data/th_curated_1200/validation.jsonl,data/tool_call_400/validation.jsonl
 base_model: convaiinnovations/laya-multilingual
 output: artifacts/laya-th1200-toolcall-smoke
 epochs: 1
