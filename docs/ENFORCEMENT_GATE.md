@@ -25,7 +25,8 @@ split (`data/th_curated_1200/test.jsonl`), reproduced in `artifacts/live-test-me
 | `prohibited` separation | 0.390 | passes criterion 3 (0.678 vs 0.287) |
 | `prohibited` gold-false mean | 0.287 | passes criterion 3 |
 | Abstain rate at the fitted threshold | 0.43 | passes criterion 6, once the checkpoint is recalibrated |
-| Tool-call risk spread (`data/tool_call_80/test.jsonl`) | 0.618 | **fails criterion 5**: no discrimination on tool calls |
+| Tool-call risk spread (`data/tool_call_400/test.jsonl`) | 0.403 | **fails criterion 5**: no discrimination on tool calls |
+| Tool-call action accuracy (same split) | 42.9% | majority baseline 35.7% |
 
 Criterion 6 is measured, but the shipped checkpoint's `rl_agent_config.json` predates this change
 and carries no `abstain_threshold_by_qtype`, so the server still uses the 0.6 default until

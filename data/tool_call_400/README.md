@@ -30,10 +30,10 @@ external impact, 4 irreversible, destructive, or credential-exposing.
 
 | Split | Cases | Decisions | Risk spread (0→4) | Actions (execute / ask_user / reject) |
 | --- | ---: | ---: | --- | --- |
-| train | 101 | 404 | 16 / 14 / 18 / 17 / 36 | 30 / 33 / 38 |
-| validation | 17 | 68 | 3 / 2 / 3 / 3 / 6 | 4 / 5 / 8 |
-| calibration | 15 | 60 | 2 / 2 / 3 / 3 / 5 | 4 / 4 / 7 |
-| test | 13 | 52 | 2 / 2 / 2 / 2 / 5 | 4 / 4 / 5 |
+| train | 240 | 960 | 73 / 35 / 34 / 36 / 62 | 106 / 62 / 72 |
+| validation | 30 | 120 | 9 / 4 / 4 / 5 / 8 | 13 / 5 / 12 |
+| calibration | 26 | 104 | 8 / 4 / 4 / 4 / 6 | 12 / 5 / 9 |
+| test | 28 | 112 | 9 / 4 / 4 / 4 / 7 | 10 / 9 / 9 |
 
 Split independence is enforced by unique case ids, unique request text, and unique
 `scenario_family`. Every split contains all five risk levels and all three actions, which an earlier
@@ -45,17 +45,22 @@ python scripts/validate_dataset.py --root data/tool_call_400
 
 ## Honest limitations
 
-- **146 cases, not 400.** The directory name is the target, not the count. Another 254 hand-written
-  cases are still needed before the slice can carry the weight of a training mix; at 146 it is
-  7.6% of the combined corpus with `th_curated_1200`, against the 25–40% that would plausibly move
-  the model's behaviour on tool calls.
-- **13 test cases cannot decide criterion 5.** The split is balanced but tiny. It can show a
-  regression, not confirm a pass.
+- **324 cases, not 400.** The directory name is the target, not the count. Another 76 hand-written
+  cases are still needed. At 324 the slice is 21% of the combined corpus with `th_curated_1200`,
+  which is inside the 25-40% range where a shift in tool-call behaviour becomes plausible, but it
+  is the low end of that range.
+- **28 test cases can show a gap, not confirm a pass.** Measured on this split the shipped model
+  scores 42.9% action accuracy against a 35.7% majority baseline, and its risk head is flat: mean
+  prediction 1.73 / 1.92 / 2.06 / 2.14 / 1.99 for gold levels 0 to 4, a spread of 0.403 against
+  1.474 on the model's own distribution. That is enforcement criterion 5 failing, now on a split
+  large enough to mean something.
 - **English only.** Thai tool-call coverage is still missing.
-- **Risk 4 is over-represented** (36 of 101 training cases) because catastrophic operations have
-  many distinct spellings while safe reads do not. This is deliberate but it biases the action
-  marginal toward `reject`.
-- **Labels are development data**, not observed human decisions, and have not had a second reviewer.
+- **Risk 0 is now over-represented** (73 of 240 training cases) because batch 2 added a long tail of
+  read-only commands to balance the action distribution. Risk 4 remains high at 62. Both ends are
+  deliberately above the middle levels, which pushes the risk marginal outward.
+- **Labels are development data**, not observed human decisions, and have had only one reviewer.
+- **Batch 2 is PowerShell and Windows heavy**, which matches the machine the hook runs on but not
+  the POSIX agents the hook also governs.
 
 ## Integration
 

@@ -51,12 +51,13 @@ not apply. The numbers above are the uncalibrated runtime path, which is why the
 - **It abstains on everything.** Mean action confidence is 0.211 against the default 0.6 threshold,
   so `abstain` is true and `decision` is null for every request. The gated signal comes from
   `needs_review` and `prohibited` instead.
-- **It has never seen tool calls.** On `data/tool_call_80/test.jsonl` the risk spread falls to 0.618
-  and action accuracy is at the 50.0% majority baseline (8 cases, not statistically meaningful).
-  The distribution the hook actually sends is still uncovered.
+- **It has never seen tool calls.** On `data/tool_call_400/test.jsonl` (28 cases) the risk spread is
+  0.403 against 1.474 on its own distribution, and action accuracy is 42.9% against a 35.7%
+  majority baseline. The distribution the hook actually sends is still uncovered.
 - Training contexts are short (mean 70 characters, max 140) while real agent sessions reach 460.
-  The `tool_call_400` slice exists to close that gap but is a work in progress at 146 hand-written
-  cases of a 400-case target.
+  The `tool_call_400` slice exists to close that gap, at 324 hand-written cases of a 400-case
+  target. Even at that size the model is still flat on tool calls, which is why retraining has not
+  been attempted yet.
 
 #### Why th1200?
 
