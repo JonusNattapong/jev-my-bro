@@ -71,8 +71,19 @@ def validate_locked_decoder(config: dict, test_data: Path) -> None:
     if not config.get("temperature") or not config.get("score_thresholds"):
         raise ValueError("locked evaluation requires calibrated temperatures and score thresholds")
     calibration_data = provenance.get("dataset")
-    if calibration_data and Path(calibration_data).resolve() == test_data.resolve():
-        raise ValueError("locked evaluation cannot use the calibration split as test data")
+    if calibration_data:
+        # calibrate records a single path for one corpus and a list when the served model covers
+        # more than one input distribution; both must be checked against the test split.
+        candidates = [calibration_data] if isinstance(calibration_data, str) else list(calibration_data)
+        resolved_test = test_data.resolve()
+        for candidate in candidates:
+            if not isinstance(candidate, str):
+                continue
+            if Path(candidate).name.lower() == "test.jsonl" or Path(candidate).resolve() == resolved_test:
+                raise ValueError(
+                    "locked evaluation cannot use a calibration split as test data: "
+                    f"{candidate}"
+                )
 
 
 def distribution(question: dict, answer: dict) -> np.ndarray:
