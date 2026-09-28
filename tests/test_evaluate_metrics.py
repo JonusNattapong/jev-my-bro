@@ -7,6 +7,20 @@ import pytest
 from jevbro.evaluate import macro_recall
 
 
+def test_spread_is_zero_for_a_flat_head_and_large_for_a_discriminating_one() -> None:
+    """The spread is the only reported signal that separates the two head behaviours."""
+    from jevbro.evaluate import _spread
+
+    flat = {level: [2.4, 2.4, 2.4] for level in range(5)}
+    assert _spread(flat) == 0.0
+
+    real = {0: [0.4, 0.5], 1: [1.0], 2: [2.0], 3: [3.0], 4: [3.8, 4.0]}
+    assert _spread(real) > 1.0
+
+    assert _spread({0: [1.0]}) is None
+    assert _spread({}) is None
+
+
 def test_locked_evaluation_accepts_multi_corpus_calibration_provenance() -> None:
     """calibrate records a list of paths when the model serves several distributions."""
     from jevbro.evaluate import validate_locked_decoder

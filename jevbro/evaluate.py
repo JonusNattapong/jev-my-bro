@@ -86,6 +86,16 @@ def validate_locked_decoder(config: dict, test_data: Path) -> None:
                 )
 
 
+def _spread(expected_by_gold: dict[int, list[float]]) -> float | None:
+    """Gap between the highest and lowest mean prediction across gold levels.
+
+    A head that ignores its input produces a value near zero here while still reporting a
+    plausible QWK, so the spread is the signal that distinguishes the two.
+    """
+    means = [float(np.mean(values)) for values in expected_by_gold.values() if values]
+    return (max(means) - min(means)) if len(means) > 1 else None
+
+
 def distribution(question: dict, answer: dict) -> np.ndarray:
     qtype = question["type"]
     if qtype == "choice":
@@ -136,6 +146,15 @@ def main() -> None:
     score_argmax_levels: list[int] = []
     score_nearest_levels: list[int] = []
     score_threshold_levels: list[int] = []
+    # Enforcement-gate signals. The training log prints these every epoch; without them here a
+    # gate decision can only be made on accuracy, which hides a head that ignores its input.
+    score_expected_by_gold: dict[int, list[float]] = defaultdict(list)
+    noul_scores: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: {"true": [], "false": []}
+    )
+    choice_confidences: list[float] = []
+    choice_abstain: list[float] = []
+    abstain_threshold = config.get("abstain_threshold_by_qtype", {}).get("choice")
 
     for index, case in enumerate(cases, 1):
         result = agent.predict(case["state"], case["questions"])
@@ -155,6 +174,9 @@ def main() -> None:
             elif qtype == "noul":
                 predicted_label = "true" if float(answer["noul"]) >= 0.5 else "false"
                 correct = float(predicted_label == str(gold["label"]).lower())
+                noul_scores[qid]["true" if str(gold["label"]).lower() == "true" else "false"].append(
+                    float(answer["noul"])
+                )
             else:
                 nearest_level = hard_level_from_expected(float(answer["score"]), levels=len(pred))
                 threshold_level = (
@@ -181,6 +203,14 @@ def main() -> None:
                 score_within_one.append(float(hard_error <= 1))
                 score_expected_errors.append(abs(float(answer["score"]) - float(gold["score"])))
                 score_rps_values.append(ranked_probability_score(pred, target))
+                score_expected_by_gold[gold_level].append(float(answer["score"]))
+
+            if qtype == "choice":
+                choice_confidences.append(float(answer.get("confidence", pred.max())))
+                if abstain_threshold is not None:
+                    choice_abstain.append(
+                        float(float(answer.get("confidence", pred.max())) < abstain_threshold)
+                    )
 
             primitive[qtype]["n"] += 1
             primitive[qtype]["correct"] += correct
@@ -248,6 +278,26 @@ def main() -> None:
         if score_true_levels
         else None,
         "score_rps": float(np.mean(score_rps_values)) if score_rps_values else None,
+        "score_mean_expected_by_gold_level": {
+            str(level): float(np.mean(values))
+            for level, values in sorted(score_expected_by_gold.items())
+        },
+        "score_spread_max_minus_min": _spread(score_expected_by_gold),
+        "noul_separation": {
+            qid: {
+                "gold_true_mean": float(np.mean(buckets["true"])) if buckets["true"] else None,
+                "gold_false_mean": float(np.mean(buckets["false"])) if buckets["false"] else None,
+                "separation": (
+                    float(np.mean(buckets["true"]) - np.mean(buckets["false"]))
+                    if buckets["true"] and buckets["false"]
+                    else None
+                ),
+            }
+            for qid, buckets in sorted(noul_scores.items())
+        },
+        "choice_confidence_mean": float(np.mean(choice_confidences)) if choice_confidences else None,
+        "abstain_threshold": abstain_threshold,
+        "abstain_rate": float(np.mean(choice_abstain)) if choice_abstain else None,
         "score_confusion_matrix": score_confusion,
         "score_per_level_recall": per_level_recall,
         "score_decoder": score_decoder,
