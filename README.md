@@ -239,6 +239,17 @@ That config trains on `data/th_curated_1200` plus `data/tool_call_80`, the tool-
 covers the literal shell-command and file-edit strings the hook sends. A test asserts the config
 never references a `test.jsonl` or `calibration.jsonl` split.
 
+Each epoch logs one line with the diagnostics that show whether the heads are actually learning:
+
+```text
+[train] epoch=1/6 val_accuracy=0.5210 score_qwk=0.198 score_spread=0.214 needs_review_sep=0.181 prohibited_sep=0.130
+```
+
+`score_spread` is the risk head's mean prediction for gold level 0 versus gold level 4. A value near
+zero means the head is returning the training mean for every input, which accuracy and QWK both
+hide. Watch it across epochs: if it does not move, more data will not help and the architecture is
+what needs changing. The gate thresholds live in [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
+
 ## Two-Tier Cached Architecture
 
 Jev combines a cached lookup with neural semantic generalization across 2 tiers:

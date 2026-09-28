@@ -133,6 +133,44 @@ def load_items_multi(tokenizer, cfg: dict, spec: str) -> tuple[list[dict], dict[
     return items, per_path
 
 
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def summarize_head_diagnostics(
+    score_predicted_by_gold: dict[int, list[float]],
+    noul_scores: dict[str, dict[str, list[float]]],
+) -> tuple[dict[str, float | None], dict[str, dict[str, float | None]]]:
+    """Reduce raw predictions into the two numbers that reveal a non-conditional head.
+
+    A head that only learned the training mean scores every input the same, which no accuracy or
+    QWK figure exposes. `spread_max_minus_min` catches that for the risk head, and `separation`
+    catches it for the noul heads. The first return value is
+    `{"by_gold_level": {...}, "spread_max_minus_min": ...}`.
+    """
+    score_by_gold = {
+        str(level): _mean(score_predicted_by_gold[level])
+        for level in sorted(score_predicted_by_gold)
+    }
+    score_means = [value for value in score_by_gold.values() if value is not None]
+    noul_report: dict[str, dict[str, float | None]] = {}
+    for qid, buckets in noul_scores.items():
+        positive = _mean(buckets["true"])
+        negative = _mean(buckets["false"])
+        noul_report[qid] = {
+            "gold_true_mean": positive,
+            "gold_false_mean": negative,
+            "separation": None if positive is None or negative is None else positive - negative,
+        }
+    score_report: dict[str, float | None] = {
+        "by_gold_level": score_by_gold,  # type: ignore[dict-item]
+        "spread_max_minus_min": (max(score_means) - min(score_means))
+        if len(score_means) > 1
+        else None,
+    }
+    return score_report, noul_report
+
+
 @torch.no_grad()
 def validation_metrics(model, items: list[dict], tokenizer, device: torch.device, batch_size: int = 16) -> dict:
     model.eval()
@@ -148,8 +186,14 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
     score_predictions: list[int] = []
     score_argmax_predictions: list[int] = []
     score_within_one = 0
+    score_predicted_by_gold: dict[int, list[float]] = {}
+    noul_scores: dict[str, dict[str, list[float]]] = {
+        "needs_review": {"true": [], "false": []},
+        "prohibited": {"true": [], "false": []},
+    }
     for start in range(0, len(items), batch_size):
-        batch = collate_items(items[start : start + batch_size], tokenizer.pad_token_id)
+        chunk = items[start : start + batch_size]
+        batch = collate_items(chunk, tokenizer.pad_token_id)
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         marker_pos = batch["marker_pos"].to(device)
@@ -187,6 +231,22 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
                 hard_level_from_expected(float(value)) for value in pred_expected.cpu().tolist()
             )
             score_argmax_predictions.extend(int(value) for value in pred_levels.cpu().tolist())
+            for level, predicted in zip(selected_labels.cpu().tolist(), pred_expected.cpu().tolist()):
+                score_predicted_by_gold.setdefault(int(level), []).append(float(predicted))
+        is_noul = qtype == QTYPES["noul"]
+        if is_noul.any():
+            selected_index = is_noul.nonzero(as_tuple=True)[0]
+            noul_probs = probs[is_noul][:, 1]
+            noul_labels = labels[is_noul]
+            for position, predicted in zip(
+                selected_index.cpu().tolist(), noul_probs.cpu().tolist()
+            ):
+                qid = chunk[position]["qid"]
+                bucket = noul_scores.get(qid)
+                if bucket is None:
+                    continue
+                gold_true = int(noul_labels[position].item()) == 1
+                bucket["true" if gold_true else "false"].append(float(predicted))
         total += len(labels)
     model.train()
     recalls = []
@@ -198,6 +258,17 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
                 for truth, prediction in zip(score_truth, score_argmax_predictions)
             )
             recalls.append(hit_count / truth_count)
+
+    def _mean(values: list[float]) -> float | None:
+        return sum(values) / len(values) if values else None
+
+    # A head that only learned the training mean scores every input the same, which inflates
+    # nothing and hides everything. The spread and the noul separation are the signals that show
+    # whether the model is conditioning on the input at all.
+    score_diagnostics, noul_report = summarize_head_diagnostics(
+        score_predicted_by_gold, noul_scores
+    )
+
     return {
         "accuracy": correct / max(1, total),
         "soft_nll": nll_sum / max(1, total),
@@ -212,8 +283,15 @@ def validation_metrics(model, items: list[dict], tokenizer, device: torch.device
             "qwk": quadratic_weighted_kappa(score_truth, score_predictions, levels=5)
             if score_truth
             else None,
+            "by_gold_level": score_diagnostics["by_gold_level"],
+            "spread_max_minus_min": score_diagnostics["spread_max_minus_min"],
         },
+        "noul": noul_report,
     }
+
+
+def _round_or_none(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
 
 
 def main() -> None:
@@ -405,6 +483,18 @@ def main() -> None:
                 )
 
         metrics = validation_metrics(model, validation_items, tokenizer, device)
+        score_metrics = metrics["score"]
+        spread = score_metrics.get("spread_max_minus_min")
+        noul_metrics = metrics.get("noul", {})
+        print(
+            f"[train] epoch={epoch + 1}/{args.epochs} "
+            f"val_accuracy={metrics['accuracy']:.4f} "
+            f"score_qwk={score_metrics.get('qwk')} "
+            f"score_spread={spread if spread is None else round(spread, 3)} "
+            f"needs_review_sep={_round_or_none(noul_metrics.get('needs_review', {}).get('separation'))} "
+            f"prohibited_sep={_round_or_none(noul_metrics.get('prohibited', {}).get('separation'))}",
+            flush=True,
+        )
         print(
             json.dumps(
                 {

@@ -6,7 +6,61 @@ import numpy as np
 from jevbro.config import load_config
 from jevbro.evaluate import multiclass_nll
 from jevbro.publish import main as publish_main
-from jevbro.train import split_paths
+from jevbro.train import split_paths, summarize_head_diagnostics
+
+
+def test_head_diagnostics_flag_a_head_that_only_predicts_the_mean() -> None:
+    """A head that ignores its input must show zero spread and zero separation.
+
+    This is the measured failure: the shipped th1200 risk head returns the training mean for
+    every request, which no accuracy or QWK figure exposes.
+    """
+    flat_scores = {level: [2.4, 2.4, 2.4] for level in range(5)}
+    flat_noul = {qid: {"true": [0.63, 0.63], "false": [0.63, 0.63]} for qid in ("needs_review", "prohibited")}
+
+    score_report, noul_report = summarize_head_diagnostics(flat_scores, flat_noul)
+
+    assert score_report["spread_max_minus_min"] == 0.0
+    assert noul_report["prohibited"]["separation"] == 0.0
+    assert noul_report["needs_review"]["separation"] == 0.0
+
+
+def test_head_diagnostics_reward_a_head_that_conditions_on_input() -> None:
+    scores = {0: [0.4, 0.5], 1: [1.0], 2: [2.0], 3: [3.0], 4: [3.8, 4.0]}
+    noul = {
+        "needs_review": {"true": [0.9, 0.8], "false": [0.2, 0.3]},
+        "prohibited": {"true": [0.7], "false": [0.2, 0.1, 0.2]},
+    }
+
+    score_report, noul_report = summarize_head_diagnostics(scores, noul)
+
+    assert score_report["spread_max_minus_min"] > 1.0
+    assert score_report["by_gold_level"]["0"] < score_report["by_gold_level"]["4"]
+    assert noul_report["needs_review"]["separation"] > 0.3
+    assert noul_report["prohibited"]["separation"] > 0.3
+
+
+def test_head_diagnostics_tolerate_a_missing_class() -> None:
+    score_report, noul_report = summarize_head_diagnostics(
+        {}, {"prohibited": {"true": [], "false": [0.2]}}
+    )
+
+    assert score_report["spread_max_minus_min"] is None
+    assert noul_report["prohibited"]["separation"] is None
+    assert noul_report["prohibited"]["gold_false_mean"] == 0.2
+
+
+def test_enforcement_gate_criteria_name_the_metrics_the_training_log_reports() -> None:
+    """The gate must reference the exact metric names validation_metrics emits."""
+    gate = (Path(__file__).parents[1] / "docs" / "ENFORCEMENT_GATE.md").read_text(encoding="utf-8")
+    for metric in (
+        "validation.score.spread_max_minus_min",
+        "validation.noul.prohibited.separation",
+        "validation.noul.needs_review.separation",
+    ):
+        assert metric in gate, f"gate criterion must name {metric}"
+    assert "spread of 0.22" in gate
+
 
 
 def test_colab_config_is_loadable_and_reproducible() -> None:
