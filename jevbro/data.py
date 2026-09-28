@@ -70,5 +70,21 @@ def build_items(tokenizer, cfg: dict, cases: Iterable[dict]) -> list[dict]:
     return items
 
 
+def split_paths(spec: str) -> list[str]:
+    """Parse a comma-separated corpus spec into ordered, de-duplicated paths.
+
+    Shared by training and calibration so a model covering several input distributions can name
+    them all without merging files on disk, which would destroy split provenance.
+    """
+    paths: list[str] = []
+    for raw in str(spec or "").split(","):
+        candidate = raw.strip()
+        if candidate and candidate not in paths:
+            paths.append(candidate)
+    if not paths:
+        raise ValueError(f"no dataset paths in {spec!r}")
+    return paths
+
+
 def load_items(tokenizer, cfg: dict, path: str) -> list[dict]:
     return build_items(tokenizer, cfg, read_cases(path))

@@ -14,6 +14,7 @@ from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable, save_checkpoint
 from jevbro.config import apply_config_defaults
 from jevbro.data import load_items
+from jevbro.data import split_paths as data_split_paths
 from jevbro.ordinal import (
     coral_ordinal_loss,
     effective_number_weights,
@@ -108,14 +109,7 @@ def seed_everything(seed: int) -> None:
 
 def split_paths(spec: str) -> list[str]:
     """Parse a comma-separated corpus spec into ordered, de-duplicated paths."""
-    paths: list[str] = []
-    for raw in str(spec or "").split(","):
-        candidate = raw.strip()
-        if candidate and candidate not in paths:
-            paths.append(candidate)
-    if not paths:
-        raise ValueError(f"no dataset paths in {spec!r}")
-    return paths
+    return data_split_paths(spec)
 
 
 def load_items_multi(tokenizer, cfg: dict, spec: str) -> tuple[list[dict], dict[str, int]]:

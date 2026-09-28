@@ -11,13 +11,18 @@ from laya.common import confidence_from_probs
 
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable
-from jevbro.data import load_items
+from jevbro.data import load_items, split_paths
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fit one temperature per Laya question type")
     parser.add_argument("--model", default="artifacts/laya-model")
-    parser.add_argument("--data", default="data/calibration.jsonl")
+    parser.add_argument(
+        "--data",
+        default="data/calibration.jsonl",
+        help="Calibration JSONL path, or a comma-separated list of paths when the served "
+        "model covers more than one input distribution",
+    )
     parser.add_argument("--report", default="artifacts/calibration-report.json")
     parser.add_argument("--batch-size", type=int, default=16)
     return parser.parse_args()
@@ -199,11 +204,18 @@ def select_score_decoder(thresholds: list[float], minimum_gap: float = 1e-3) -> 
 
 def main() -> None:
     args = parse_args()
-    calibration_path = Path(args.data)
-    validate_calibration_data(calibration_path)
+    calibration_paths = split_paths(args.data)
+    for path in calibration_paths:
+        validate_calibration_data(Path(path))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, tokenizer, cfg, _ = load_trainable(args.model, device)
-    items = load_items(tokenizer, cfg, calibration_path)
+    items: list[dict] = []
+    sources: dict[str, int] = {}
+    for path in calibration_paths:
+        loaded = load_items(tokenizer, cfg, path)
+        sources[path] = len(loaded)
+        items.extend(loaded)
+    print(f"[calibrate] sources={sources} total={len(items)}", flush=True)
     raw = collect(model, tokenizer, items, device, args.batch_size)
 
     temperatures = [1.0, 1.0, 1.0]
@@ -233,8 +245,9 @@ def main() -> None:
     score_decoder = select_score_decoder(score_thresholds)
 
     calibration_provenance = {
-        "dataset": str(calibration_path),
-        "dataset_sha256": sha256_file(calibration_path),
+        "dataset": [str(path) for path in calibration_paths],
+        "dataset_sha256": {str(path): sha256_file(Path(path)) for path in calibration_paths},
+        "items_per_source": sources,
         "decoder_selection": "calibration_only",
         "report": str(Path(args.report)),
     }
