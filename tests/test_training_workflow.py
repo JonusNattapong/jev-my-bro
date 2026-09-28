@@ -55,6 +55,14 @@ def test_fit_abstain_threshold_prefers_answering_while_keeping_accuracy() -> Non
     assert "no threshold met" in note["note"]
 
 
+def test_smoke_config_is_one_epoch_and_never_publishes() -> None:
+    """The smoke run exists to validate the pipeline, not to produce a checkpoint."""
+    config = load_config(Path(__file__).parents[1] / "configs" / "colab-th1200-toolcall-smoke.yaml")
+    assert config["epochs"] == 1
+    assert "smoke" in config["output"]
+    assert len(split_paths(config["train"])) == 2
+
+
 def test_head_diagnostics_flag_a_head_that_only_predicts_the_mean() -> None:
     """A head that ignores its input must show zero spread and zero separation.
 

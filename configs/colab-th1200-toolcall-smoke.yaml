@@ -1,0 +1,31 @@
+# One-epoch pipeline check for the combined corpus. Not a candidate checkpoint.
+#
+# Purpose: confirm on Colab that configs/colab-th1200-toolcall.yaml actually runs, that
+# both corpora load, and that the per-epoch diagnostics print. Costs roughly a sixth of a
+# full run and produces a checkpoint that is not meant to be published.
+#
+# The current mix is 1,200 Thai prose cases against 56 tool-call cases, so tool calls are
+# 4.5% of training. A full run on this mix is not expected to satisfy enforcement criterion
+# 5 (no discrimination on tool-call inputs) and should not be used to judge whether the
+# approach works.
+train: data/th_curated_1200/train.jsonl,data/tool_call_80/train.jsonl
+validation: data/th_curated_1200/validation.jsonl,data/tool_call_80/validation.jsonl
+base_model: convaiinnovations/laya-multilingual
+output: artifacts/laya-th1200-toolcall-smoke
+epochs: 1
+micro_batch: 4
+grad_accum: 8
+group_size: 4
+english_weight: 1.0
+choice_weight: 1.5
+score_weight: 2.5
+score_ce_weight: 0.5
+score_rps_weight: 1.0
+score_class_balance_beta: 0.995
+score_cumulative_weight: 1.0
+encoder_lr: 0.00002
+head_lr: 0.0001
+sigma_start: 0.4
+sigma_end: 0.1
+seed: 42
+device: cuda
