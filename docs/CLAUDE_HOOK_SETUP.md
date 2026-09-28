@@ -11,11 +11,34 @@ When Claude Code is about to run a tool (`Bash`, `Write`, `Edit`, `MultiEdit`, `
 2. **Ambiguous or High-Risk action** (refactoring auth, migrations) ➔ Jev returns `ask` ➔ Claude Code **pauses and asks the human** for explicit confirmation.
 3. **Prohibited action** (`rm -rf /`, exfiltrating `.env`, `DROP DATABASE`) ➔ Jev returns `deny` ➔ Claude Code blocks execution completely.
 
-Jev is advisory: it does not execute commands, and a low-confidence model abstains toward `ask`
-rather than blocking. **The hook does not gate by default.** `JEV_ENFORCE=0` records the verdict to
-stderr and lets Claude Code apply its own permission rules; set `JEV_ENFORCE=1` only after the
-measured criteria in [`ENFORCEMENT_GATE.md`](ENFORCEMENT_GATE.md) are met. There is no
-deterministic rule engine, so while enforcement is off, nothing blocks a destructive call.
+Jev is advisory for model verdicts: it does not execute commands, and a low-confidence model abstains
+toward `ask` rather than blocking. **The hook does not gate on the model by default.**
+`JEV_ENFORCE=0` records the verdict to stderr and lets Claude Code apply its own permission rules;
+set `JEV_ENFORCE=1` only after the measured criteria in [`ENFORCEMENT_GATE.md`](ENFORCEMENT_GATE.md)
+are met.
+
+### Hard safety floor
+
+Independent of `JEV_ENFORCE` and of whether the server is reachable, the hook denies a small set of
+catastrophic operations before the model is consulted. It is deny-only, hardcoded, and deliberately
+minimal:
+
+- recursive force delete of a system or home path (`rm -rf /`, `rm -rf ~`)
+- disk format or raw device write (`mkfs`, `dd of=/dev/…`, `shutil.rmtree(…)`)
+- recursive delete driven by `find / … -delete`
+- reading credential material (`cat .env`, `cat ~/.ssh/id_rsa`, `printenv …SECRET…`)
+- sending credential material off-host (`curl … -d @.env`, piping a secret to a URL)
+- destructive database statements (`DROP DATABASE/SCHEMA/TABLE`, `TRUNCATE`)
+- irreversible git destruction (force-push to `main`/`master`, `git clean -fdx`,
+  `git reset --hard origin/main`)
+- audit bypass (`git commit --no-verify`, disabling branch protection or required checks)
+- writing to credential files or trust boundaries (`.env`, private keys, `.git/hooks/`,
+  `.github/workflows/`)
+
+The command patterns apply only to `Bash`-style tools, so documentation that quotes a dangerous
+command is not blocked. `.env.example` and similar templates stay writable. There is no allow side:
+this list never permits anything, it only refuses. Extending it beyond catastrophic operations
+re-creates the rule engine that was removed, so keep it short and explicit.
 
 The hook returns decisions via **JSON `permissionDecision`** field, which Claude Code natively understands.
 

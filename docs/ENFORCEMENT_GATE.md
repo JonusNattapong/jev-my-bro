@@ -73,6 +73,7 @@ Reverting is setting `JEV_ENFORCE=0`; no code change is required.
 
 ## If the criteria cannot be met
 
-Do not gate on the model. A short deterministic deny-list inside the hook (no model, no MCP call)
-is the honest alternative for catastrophic patterns, and it must stay small and explicit rather
-than becoming a general rule engine.
+Do not gate on the model. The hard safety floor in `hooks/claude_pre_tool_use.py` is the honest
+alternative for catastrophic patterns: deny-only, hardcoded, and independent of both the model and
+this document. It already exists and runs regardless of `JEV_ENFORCE`. Keep it small; widening it
+into a general rule engine reintroduces the subsystem that was removed.

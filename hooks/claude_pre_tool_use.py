@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import re
 import socket
 import sys
 import urllib.error
@@ -36,6 +37,126 @@ MAX_SNIPPET_CHARS = 600
 _DOC_SUFFIXES = (".md", ".mdx", ".rst", ".txt", ".adoc")
 _CONFIG_SUFFIXES = (".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf")
 _CONFIG_NAMES = (".env", ".claude", ".github", "settings.json", "Dockerfile", "Makefile")
+
+# Hard safety floor: irreversible, system-wide, or credential-exposing operations are denied
+# before the model is consulted, so they are blocked even when the Jev server is down and even
+# though the model itself is not accurate enough to gate. Deny only, never allow, and only for
+# patterns that are catastrophic rather than merely risky.
+_HARD_DENY_BASH: tuple[tuple[str, re.Pattern], ...] = (
+    (
+        "destructive recursive delete",
+        re.compile(
+            r"\brm\s+(-[a-z]*\s+)*-[a-z]*r[a-z]*f?[a-z]*\s+(/|/\*|~|\$HOME|\.\.\s*$|/\*)"
+            r"|\brm\s+-[a-z]*r[a-z]*f[a-z]*\s+--no-preserve-root"
+            r"|\brm\s+-[a-z]*f[a-z]*\s+--no-preserve-root",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "disk format or raw device write",
+        re.compile(
+            r"\bmkfs(\.\w+)?\b|\bdd\s+[^\n]*of=/dev/[snv]|format\s+[a-zA-Z]:\b|shutil\.rmtree\(",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "recursive delete driven by find",
+        re.compile(r"\bfind\s+/\s[^\n|]*(-delete|-exec\s+rm\b)", re.IGNORECASE),
+    ),
+    (
+        "credential or secret material read",
+        re.compile(
+            r"\b(cat|less|more|head|tail|strings|bat|view|xdg-open|base64)\s+[^\n|]*"
+            r"(\.env\b|id_rsa|id_ed25519|id_dsa|\.pem\b|\.aws/credentials|\.npmrc|\.netrc|\.pgpass|"
+            r"credentials\.json|secrets?\.(ya?ml|json|toml))"
+            r"|\bprintenv\b[^\n|]*(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL)"
+            r"|\benv\b\s*\|\s*(grep|rg)\s+[^\n|]*(SECRET|TOKEN|PASSWORD|API_?KEY)"
+            r"|\btype\b[^\n|]*\bid_rsa\b|\becho\s+\$\{?[A-Z_]*(SECRET|TOKEN|PASSWORD|API_?KEY)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "secret material sent off-host",
+        re.compile(
+            r"(curl|wget|nc|ncat|scp|rsync|http)\s+[^\n|]*(@[^\s|]*(env|secret|credential|key)"
+            r"|[^\s|]*(env|secret|credential)\b[^\s|]*)"
+            r"|\b(cat|type|printenv)\s+[^\n|]*(\.env|id_rsa)[^\n|]*\|\s*(curl|wget|nc|ncat)",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "destructive database operation",
+        re.compile(
+            r"\bDROP\s+(DATABASE|SCHEMA|TABLE)\b|\bTRUNCATE\s+(TABLE\s+)?\w+",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "irreversible git history or work destruction",
+        re.compile(
+            r"\bgit\s+push\s+[^\n|]*(--force|-f)\b[^\n|]*\b(main|master|production|prod)\b"
+            r"|\bgit\s+(push\s+[^\n|]*(main|master)[^\n|]*(-f|--force)|push\s+(-f|--force)[^\n|]*\b(main|master)\b)"
+            r"|\bgit\s+clean\s+-[a-z]*f[a-z]*[a-z]*\b(?![^\n]*\bdry-run\b)"
+            r"|\bgit\s+reset\s+--hard\s+origin/(main|master)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "audit or guardrail bypass",
+        re.compile(
+            r"\bgit\s+commit\b[^\n|]*--no-verify\b"
+            r"|\b(disable|turn\s+off|bypass|skip|remove)\b[^\n|]*"
+            r"(audit\s*log|branch\s*protection|protection\s*rule|required\s+check|code\s*owners"
+            r"|commit\s*hook|pre-commit)",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+# Writing to these paths is a credential or trust-boundary change regardless of content.
+# `.env.example` and friends are templates with no live secrets in them, so they stay writable.
+_HARD_DENY_WRITE_TARGET = re.compile(
+    r"(^|[\\/])\.env(\.(?!example|sample|template|dist|tpl|defaults)[\w-]+)?$"
+    r"|(^|[\\/])(\.env)$"
+    r"|(^|[\\/])(id_rsa|id_ed25519|id_dsa|[\w-]*\.pem|[\w-]*\.p12|[\w-]*\.pfx|[\w-]*\.key)$"
+    r"|(^|[\\/])(\.aws[\\/]credentials|\.netrc|\.pgpass|\.npmrc)$"
+    r"|(^|[\\/])\.git[\\/]hooks[\\/]"
+    r"|(^|[\\/])(\.github[\\/]workflows[\\/])",
+    re.IGNORECASE,
+)
+
+
+def hard_deny(tool_name: str, tool_input: dict[str, Any]) -> str:
+    """Return a deny reason for catastrophic operations, or "" when nothing matches.
+
+    This is not a governance model and must not grow into one. It covers only operations that
+    are irreversible, system-wide, or credential-exposing, and it never allows anything.
+    """
+    normalized = (tool_name or "").lower()
+    text = " ".join(str(tool_input.get(key) or "") for key in ("command", "CommandLine", "cmd"))
+    text = " ".join(text.split())
+
+    if normalized in ("bash", "run_command", "shell_command", "terminal"):
+        for reason, pattern in _HARD_DENY_BASH:
+            if pattern.search(text):
+                return reason
+        return ""
+
+    if normalized in (
+        "write",
+        "writefile",
+        "write_to_file",
+        "create_file",
+        "edit",
+        "editfile",
+        "replace_file_content",
+        "edit_file",
+        "multiedit",
+    ):
+        path = str(tool_input.get("file_path") or tool_input.get("path") or "")
+        if path and _HARD_DENY_WRITE_TARGET.search(path.replace("\\", "/")):
+            return "write to credential material or a trust-boundary path"
+    return ""
 
 
 def _collapse(text: Any, limit: int = MAX_SNIPPET_CHARS) -> str:
@@ -295,15 +416,27 @@ def main() -> None:
     if not context:
         sys.exit(0)
 
+    # Hard safety floor runs before the model, so it holds even when the server is unreachable
+    # and regardless of the enforcement setting. This is the one part of the hook that blocks in
+    # advisory mode, on purpose: the model is not accurate enough to be trusted with this call.
+    denied = hard_deny(tool_name, tool_input)
+    if denied:
+        print(
+            encode_permission_decision(
+                "reject", context, 4.0, f"hard deny: {denied}", "jev-hard-deny"
+            )
+        )
+        sys.exit(0)
+
     decision = evaluate_action(context)
     gated = decision.get("gated_decision", "execute")
     risk = decision.get("risk", 0.0)
     engine = decision.get("engine", "jev")
     reason = ""
 
-    # Advisory mode (default): record the decision but never gate the tool call. The model
-    # currently scores below the majority baseline on its own test split and its risk head is
-    # flat, so enforcing its verdict would block work without protecting anything. Re-enable
+    # Advisory mode (default): record the model's decision but do not gate on it. Measured on its
+    # own test split the model reaches 75.0% action accuracy, but it abstains on 100% of requests
+    # and has no discrimination on tool-call inputs, so its verdict is not a safe gate. Re-enable
     # with JEV_ENFORCE=1 only after the criteria in docs/ENFORCEMENT_GATE.md are met.
     if not JEV_ENFORCE:
         print(f"[jev] advisory | {gated} | risk={risk:.2f} | {context[:120]}", file=sys.stderr)

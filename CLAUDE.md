@@ -53,11 +53,12 @@ There is no deterministic rule engine. The model is advisory and abstains on mos
 
 ## Automated PreToolUse Hook Integration
 
-`hooks/claude_pre_tool_use.py` is registered as a user-level `PreToolUse` hook in `~/.claude/settings.json` with absolute paths, so it observes every project; this repository's `.claude/settings.json` only sets `env` overrides (`JEV_ENFORCE=0`, `JEV_FAIL_MODE=ask`). The hook is **advisory by default and does not gate**; see [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
+`hooks/claude_pre_tool_use.py` is registered as a user-level `PreToolUse` hook in `~/.claude/settings.json` with absolute paths, so it observes every project; this repository's `.claude/settings.json` only sets `env` overrides (`JEV_ENFORCE=0`, `JEV_FAIL_MODE=ask`). The hook **does not gate on the model**; it logs the verdict and lets Claude Code apply its own rules. It does deny a small hardcoded set of catastrophic operations (recursive system deletes, credential reads, secret exfiltration, destructive SQL, force-push to main, audit bypass) regardless of `JEV_ENFORCE`. See [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
 Every tool execution (`Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`) is recorded:
-- **Verdicts are advisory.** The model currently scores below the majority baseline, so its verdict
-  is logged, not enforced.
-- `execute` / `ask_user` / `reject` are reported to stderr; nothing is blocked while
-  `JEV_ENFORCE=0`.
+- **Model verdicts are advisory.** The model reaches 75.0% action accuracy on its own test split
+  but abstains on 100% of requests and has no discrimination on tool-call inputs, so its verdict is
+  logged, not enforced.
+- The hard safety floor is enforced: catastrophic operations are refused before the model is
+  consulted.
 
 See [`docs/CLAUDE_HOOK_SETUP.md`](docs/CLAUDE_HOOK_SETUP.md) for full configuration and environment options (`JEV_TIMEOUT`, `JEV_ENFORCE`, `JEV_FAIL_MODE`).
