@@ -28,12 +28,15 @@ external impact, 4 irreversible, destructive, or credential-exposing.
 
 ## Current contents
 
+431 cases (409 English, 22 Thai). The directory name reflects the 400-case target plus the
+over-apportioned remainder; it is not a claim of 400.
+
 | Split | Cases | Decisions | Risk spread (0→4) | Actions (execute / ask_user / reject) |
 | --- | ---: | ---: | --- | --- |
-| train | 240 | 960 | 73 / 35 / 34 / 36 / 62 | 106 / 62 / 72 |
-| validation | 30 | 120 | 9 / 4 / 4 / 5 / 8 | 13 / 5 / 12 |
-| calibration | 26 | 104 | 8 / 4 / 4 / 4 / 6 | 12 / 5 / 9 |
-| test | 28 | 112 | 9 / 4 / 4 / 4 / 7 | 10 / 9 / 9 |
+| train | 321 | 1284 | 94 / 42 / 55 / 52 / 78 | 134 / 88 / 99 |
+| validation | 40 | 160 | 12 / 5 / 7 / 6 / 10 | 14 / 14 / 12 |
+| calibration | 34 | 136 | 10 / 4 / 6 / 6 / 8 | 13 / 12 / 9 |
+| test | 36 | 144 | 10 / 5 / 6 / 6 / 9 | 14 / 8 / 14 |
 
 Split independence is enforced by unique case ids, unique request text, and unique
 `scenario_family`. Every split contains all five risk levels and all three actions, which an earlier
@@ -45,22 +48,22 @@ python scripts/validate_dataset.py --root data/tool_call_400
 
 ## Honest limitations
 
-- **324 cases, not 400.** The directory name is the target, not the count. Another 76 hand-written
-  cases are still needed. At 324 the slice is 21% of the combined corpus with `th_curated_1200`,
-  which is inside the 25-40% range where a shift in tool-call behaviour becomes plausible, but it
-  is the low end of that range.
-- **28 test cases can show a gap, not confirm a pass.** Measured on this split the shipped model
-  scores 42.9% action accuracy against a 35.7% majority baseline, and its risk head is flat: mean
-  prediction 1.73 / 1.92 / 2.06 / 2.14 / 1.99 for gold levels 0 to 4, a spread of 0.403 against
-  1.474 on the model's own distribution. That is enforcement criterion 5 failing, now on a split
-  large enough to mean something.
-- **English only.** Thai tool-call coverage is still missing.
-- **Risk 0 is now over-represented** (73 of 240 training cases) because batch 2 added a long tail of
-  read-only commands to balance the action distribution. Risk 4 remains high at 62. Both ends are
-  deliberately above the middle levels, which pushes the risk marginal outward.
+- **The test split now settles the question: the model fails on tool calls.** Measured on the
+  36-case test split, action accuracy is 36.1% against a 38.9% majority baseline, i.e. below
+  guessing, and the risk head is flat at 1.54 / 1.69 / 1.93 / 2.01 / 2.10 across gold levels 0
+  to 4, a spread of 0.565 against 1.474 on the model's own distribution. Enforcement criterion 5
+  is confirmed failing, and this is the first split large enough to say so.
+- **431 cases is 22% of the combined corpus** with `th_curated_1200`, the low end of the range
+  where a shift becomes plausible. The corpus is now large enough to train on, not large enough to
+  assume it will work.
+- **Thai coverage is 22 cases**, which is enough to stop the gap being total and not enough to
+  learn from. Real sessions are Thai-speaking and the model was trained on Thai prose, so a Thai
+  request carrying a literal command is a real production surface.
+- **Batch 2 is PowerShell and Windows heavy** and batch 3 adds POSIX depth, but the two are not
+  balanced across the corpus, and the hook's hard safety floor is still POSIX-shaped.
 - **Labels are development data**, not observed human decisions, and have had only one reviewer.
-- **Batch 2 is PowerShell and Windows heavy**, which matches the machine the hook runs on but not
-  the POSIX agents the hook also governs.
+  The user asked for a second reviewer before this reaches a training mix; that has not happened.
+
 
 ## Integration
 

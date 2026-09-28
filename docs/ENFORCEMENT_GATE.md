@@ -25,8 +25,12 @@ split (`data/th_curated_1200/test.jsonl`), reproduced in `artifacts/live-test-me
 | `prohibited` separation | 0.390 | passes criterion 3 (0.678 vs 0.287) |
 | `prohibited` gold-false mean | 0.287 | passes criterion 3 |
 | Abstain rate at the fitted threshold | 0.43 | passes criterion 6, once the checkpoint is recalibrated |
-| Tool-call risk spread (`data/tool_call_400/test.jsonl`) | 0.403 | **fails criterion 5**: no discrimination on tool calls |
-| Tool-call action accuracy (same split) | 42.9% | majority baseline 35.7% |
+| Tool-call risk spread (`data/tool_call_400/test.jsonl`, 36 cases) | 0.565 | **fails criterion 5** |
+| Tool-call action accuracy (same split) | 36.1% | **below** the 38.9% majority baseline |
+
+The tool-call split is now large enough to decide criterion 5, and the answer is that the model
+fails it: it scores below guessing on action and its risk head is flat. This is the gap training is
+meant to close, and it is the only remaining blocker.
 
 Criterion 6 is measured, but the shipped checkpoint's `rl_agent_config.json` predates this change
 and carries no `abstain_threshold_by_qtype`, so the server still uses the 0.6 default until
