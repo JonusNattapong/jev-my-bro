@@ -5,7 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
+from laya.common import confidence_from_probs
 
 from jevbro.batching import collate_items
 from jevbro.checkpoint import load_trainable
@@ -93,6 +95,60 @@ def soft_nll(rows: list[tuple[list[float], list[float]]], temperature: float) ->
     return total / max(1, len(rows))
 
 
+def fit_abstain_threshold(
+    rows: list[tuple[list[float], list[float]]],
+    temperature: float,
+    minimum_active_accuracy: float = 0.90,
+) -> tuple[float, dict]:
+    """Pick the lowest confidence threshold that still answers accurately.
+
+    Confidence here is Laya's normalized Shannon entropy, `1 - H(p)/log(k)`, not the top
+    probability. For a three-way choice it stays far below 1.0 unless the model is extremely
+    peaked, so the hardcoded 0.6 default abstains on essentially every request and nulls every
+    `decision`. Measured on the calibration split this checkpoint's choice confidence tops out
+    near 0.44.
+
+    Lowering it is only safe if accuracy on the answered subset is verified, so the threshold is
+    the one that minimises the abstain rate while keeping accuracy when answering at or above the
+    target. Taking the largest threshold instead would maximise abstention and make the flag
+    meaningless.
+    """
+    scored: list[tuple[float, int, int]] = []
+    for logits, target in rows:
+        probs = torch.softmax(torch.tensor(logits, dtype=torch.float64) / temperature, -1)
+        values = [float(value) for value in probs]
+        confidence = confidence_from_probs(np.asarray(values, dtype=np.float64), len(values))
+        gold = max(range(len(target)), key=target.__getitem__)
+        predicted = int(max(range(len(values)), key=values.__getitem__))
+        scored.append((confidence, predicted, gold))
+    if not scored:
+        return 0.6, {"items": 0, "note": "no rows; kept the default threshold"}
+
+    candidates = sorted({round(value, 4) for value, _, _ in scored})
+    best: tuple[float, float, float] | None = None
+    for threshold in candidates:
+        active = [row for row in scored if row[0] >= threshold]
+        if not active:
+            continue
+        accuracy = sum(1 for _, predicted, gold in active if predicted == gold) / len(active)
+        if accuracy < minimum_active_accuracy:
+            continue
+        abstain_rate = 1.0 - len(active) / len(scored)
+        if best is None or abstain_rate < best[1]:
+            best = (threshold, abstain_rate, accuracy)
+    if best is None:
+        return 1.0, {
+            "items": len(scored),
+            "note": "no threshold met the accuracy target; the flag abstains on everything",
+        }
+    return best[0], {
+        "items": len(scored),
+        "abstain_rate": round(best[1], 4),
+        "accuracy_when_answering": round(best[2], 4),
+        "minimum_active_accuracy": minimum_active_accuracy,
+    }
+
+
 def fit_score_thresholds(
     rows: list[tuple[list[float], list[float]]],
     temperature: float,
@@ -151,17 +207,22 @@ def main() -> None:
     raw = collect(model, tokenizer, items, device, args.batch_size)
 
     temperatures = [1.0, 1.0, 1.0]
+    abstain_thresholds = [0.6, 0.6, 0.6]
     report = {"dataset": args.data, "question_types": {}}
     names = {0: "choice", 1: "score", 2: "noul"}
     for qtype in range(3):
         selected = [(logits, target) for row_type, logits, target in raw if row_type == qtype]
         temperature = fit_temperature(selected)
         temperatures[qtype] = temperature
+        abstain_threshold, abstain_report = fit_abstain_threshold(selected, temperature)
+        abstain_thresholds[qtype] = abstain_threshold
         report["question_types"][names[qtype]] = {
             "items": len(selected),
             "temperature": temperature,
             "soft_nll_before": soft_nll(selected, 1.0),
             "soft_nll_after": soft_nll(selected, temperature),
+            "abstain_threshold": abstain_threshold,
+            "abstain_fit": abstain_report,
         }
 
     score_rows = [(logits, target) for row_type, logits, target in raw if row_type == 1]
@@ -178,6 +239,9 @@ def main() -> None:
         "report": str(Path(args.report)),
     }
     cfg["temperature"] = temperatures
+    cfg["abstain_threshold_by_qtype"] = {
+        names[index]: value for index, value in enumerate(abstain_thresholds)
+    }
     cfg["score_thresholds"] = score_thresholds
     cfg["score_decoder"] = score_decoder
     cfg["calibration"] = calibration_provenance

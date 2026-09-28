@@ -1,0 +1,10 @@
+{
+  "fitted_on": "data/th_curated_1200/calibration.jsonl",
+  "abstain_threshold": 0.1845,
+  "calibration_abstain_rate": 0.52,
+  "calibration_accuracy_when_answering": 0.9167,
+  "test_abstain_rate": 0.43,
+  "test_accuracy_when_answering": 0.8421,
+  "test_accuracy_overall": 0.75,
+  "note": "rule: lowest abstain rate subject to >=0.90 accuracy when answering"
+}

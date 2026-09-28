@@ -60,6 +60,34 @@ class JevCore:
         self.cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self.cache_hits: int = 0
         self.cache_misses: int = 0
+        # Read once at construction: these come from calibration and must not change mid-process.
+        self.calibrated_abstain_threshold = self._read_calibrated_abstain_threshold()
+
+    def _read_calibrated_abstain_threshold(self) -> float | None:
+        """Return the calibration-fitted abstain threshold, if this checkpoint has one.
+
+        The 0.6 default is unreachable for a three-way choice, where confidence is normalized
+        Shannon entropy. Checkpoints calibrated with `jevbro.calibrate` carry the fitted value
+        under `abstain_threshold_by_qtype`; a checkpoint without it keeps the old behaviour.
+        """
+        config = getattr(self.agent, "cfg", None)
+        if not isinstance(config, dict):
+            return None
+        fitted = config.get("abstain_threshold_by_qtype")
+        if not isinstance(fitted, dict):
+            return None
+        value = fitted.get("choice")
+        if not isinstance(value, (int, float)):
+            return None
+        return float(value)
+
+    def resolve_abstain_threshold(self, requested: float | None) -> float:
+        """Use the caller's threshold when given, otherwise the calibrated one."""
+        if requested is not None:
+            return validate_threshold(requested)
+        if self.calibrated_abstain_threshold is not None:
+            return validate_threshold(self.calibrated_abstain_threshold)
+        return validate_threshold(0.60)
 
     def cache_stats(self) -> dict[str, Any]:
         """Return cache hit/miss statistics and utilization."""
@@ -186,7 +214,7 @@ class JevCore:
         context: str,
         *,
         language: Literal["en", "th"] | None = None,
-        abstain_threshold: float = 0.60,
+        abstain_threshold: float | None = None,
         source_agent: str = "unknown",
         prohibited_threshold: float | None = None,
         review_threshold: float | None = None,
@@ -208,7 +236,7 @@ class JevCore:
         result, resolved_language, threshold = self._evaluate(
             context,
             language=language,
-            abstain_threshold=abstain_threshold,
+            abstain_threshold=self.resolve_abstain_threshold(abstain_threshold),
             source_agent=norm_agent,
             prohibited_threshold=prohibited_threshold,
             review_threshold=review_threshold,
@@ -241,7 +269,7 @@ class JevCore:
         *,
         source_agent: str = "unknown",
         language: Literal["en", "th"] | None = None,
-        abstain_threshold: float = 0.60,
+        abstain_threshold: float | None = None,
         prohibited_threshold: float | None = None,
         review_threshold: float | None = None,
         session_id: str | None = None,
@@ -253,13 +281,13 @@ class JevCore:
         result, resolved_language, threshold = self._evaluate(
             context,
             language=language,
-            abstain_threshold=abstain_threshold,
+            abstain_threshold=self.resolve_abstain_threshold(abstain_threshold),
             source_agent=norm_agent,
             prohibited_threshold=prohibited_threshold,
             review_threshold=review_threshold,
         )
-        task_id = f"jevtask-{uuid4().hex}"
         decision_id = f"jev-{uuid4().hex}"
+        task_id = f"jevtask-{uuid4().hex}"
         result.update(
             {
                 "decision_id": decision_id,

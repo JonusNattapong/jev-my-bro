@@ -6,7 +6,53 @@ import numpy as np
 from jevbro.config import load_config
 from jevbro.evaluate import multiclass_nll
 from jevbro.publish import main as publish_main
+from jevbro.calibrate import fit_abstain_threshold
+from jevbro.core import JevCore
 from jevbro.train import split_paths, summarize_head_diagnostics
+
+
+def test_abstain_threshold_falls_back_only_when_calibration_is_absent() -> None:
+    """A checkpoint calibrated by jevbro.calibrate carries the fitted threshold in its config."""
+
+    class _FakeAgent:
+        def __init__(self, cfg):
+            self.cfg = cfg
+
+    class _FakeStore:
+        def stats(self):
+            return {}
+
+    def core_with(cfg):
+        return JevCore(_FakeAgent(cfg), _FakeStore(), model_name="test")
+
+    calibrated = core_with({"abstain_threshold_by_qtype": {"choice": 0.1845}})
+    assert calibrated.calibrated_abstain_threshold == 0.1845
+    assert calibrated.resolve_abstain_threshold(None) == 0.1845
+    assert calibrated.resolve_abstain_threshold(0.9) == 0.9, "an explicit request must win"
+
+    uncalibrated = core_with({"temperature": [1.0, 1.0, 1.0]})
+    assert uncalibrated.calibrated_abstain_threshold is None
+    assert uncalibrated.resolve_abstain_threshold(None) == 0.60
+
+
+def test_fit_abstain_threshold_prefers_answering_while_keeping_accuracy() -> None:
+    """The fit must minimise abstention subject to an accuracy floor, not maximise abstention."""
+    import numpy as np
+
+    def row(correct, peak):
+        probs = np.array([peak, (1 - peak) / 2, (1 - peak) / 2])
+        target = [0.0, 0.0, 0.0]
+        target[0 if correct else 1] = 1.0
+        return ([float(v) for v in np.log(probs)], target)
+
+    mixed = [row(True, 0.5)] * 40 + [row(True, 0.77)] * 25 + [row(True, 0.35)] * 15 + [row(False, 0.4)] * 20
+    threshold, info = fit_abstain_threshold(mixed, 1.0)
+    assert info["accuracy_when_answering"] >= 0.90
+    assert info["abstain_rate"] < 0.5
+
+    hopeless, note = fit_abstain_threshold([row(False, 0.34)] * 50, 1.0)
+    assert hopeless == 1.0, "an unanswerable model must abstain everywhere, not guess"
+    assert "no threshold met" in note["note"]
 
 
 def test_head_diagnostics_flag_a_head_that_only_predicts_the_mean() -> None:

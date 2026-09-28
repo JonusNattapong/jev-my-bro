@@ -24,8 +24,13 @@ split (`data/th_curated_1200/test.jsonl`), reproduced in `artifacts/live-test-me
 | Risk head spread (gold 0 vs gold 4) | 1.474 | passes criterion 2 |
 | `prohibited` separation | 0.390 | passes criterion 3 (0.678 vs 0.287) |
 | `prohibited` gold-false mean | 0.287 | passes criterion 3 |
-| Action confidence vs abstain threshold | 0.211 vs 0.6 | **fails criterion 6**: abstains on 100% of cases |
+| Abstain rate at the fitted threshold | 0.43 | passes criterion 6, once the checkpoint is recalibrated |
 | Tool-call risk spread (`data/tool_call_80/test.jsonl`) | 0.618 | **fails criterion 5**: no discrimination on tool calls |
+
+Criterion 6 is measured, but the shipped checkpoint's `rl_agent_config.json` predates this change
+and carries no `abstain_threshold_by_qtype`, so the server still uses the 0.6 default until
+`jevbro.calibrate` is re-run. Criterion 5 is the remaining blocker: the model has never seen a
+literal tool call.
 
 An earlier revision of this file reported 49.0% accuracy and a 0.22 risk spread. That measurement was
 taken through a runtime that asked a translated question set, so it measured a prompt the model had
@@ -58,8 +63,12 @@ artifact in `artifacts/`.
    (shell command strings and file-edit descriptions) at the length distribution actually seen in
    production. Current training contexts average 70 characters and cap at 140, while production
    contexts reach 460.
-6. **Confidence**: the action head's `confidence` clears the abstain threshold for at least 90% of
-   cases, so `abstain` is not permanently true.
+6. **Abstention is useful, not always-on.** At the abstain threshold fitted by `jevbro.calibrate`
+   on the calibration split, the abstain rate must be at or below 60% and accuracy on the answered
+   subset must stay at or above 0.80. The hardcoded 0.6 default is unreachable for a three-way
+   choice, where confidence is normalized Shannon entropy, so it abstains on 100% of requests.
+   Measured fit: threshold 0.1845, abstain rate 0.43 on the test split, accuracy 0.84 when
+   answering (`artifacts/abstain-fit.json`).
 
 ## Re-enabling enforcement
 

@@ -10,6 +10,7 @@ artifacts/*
 # Measurement evidence for the enforcement gate must be reviewable, so it is tracked even though
 # the rest of artifacts/ is ignored.
 !artifacts/live-test-metrics.json
+!artifacts/abstain-fit.json
 data/expanded/
 checkpoints/
 runs/
