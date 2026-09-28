@@ -1,6 +1,36 @@
 from pathlib import Path
 
+import importlib.util
+
 from jevbro.schema import EXPECTED_IDS, read_cases, summarize
+
+
+def _load_validator():
+    spec = importlib.util.spec_from_file_location(
+        "validate_dataset", Path(__file__).parents[1] / "scripts" / "validate_dataset.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_validator_flags_degenerate_needs_review() -> None:
+    """needs_review equal to (action != execute) makes the ask_user gate rule inverted."""
+    module = _load_validator()
+
+    def case(action: str, review: bool) -> dict:
+        return {
+            "gold": {
+                "action": {"label": action},
+                "needs_review": {"label": "true" if review else "false"},
+            }
+        }
+
+    degenerate = [case("execute", False), case("ask_user", True), case("reject", True)]
+    assert module.needs_review_degeneracy(degenerate) is not None
+
+    mixed = degenerate + [case("execute", True), case("reject", False)]
+    assert module.needs_review_degeneracy(mixed) is None
 
 
 def test_all_splits_are_valid_and_balanced() -> None:

@@ -24,41 +24,61 @@ The latest manually curated Thai model is `laya-th1200`:
 
 ### Measured Test Results
 
-Measured on 2026-09-28 against the published `JonusNattapong/jev-my-bro-th1200` checkpoint, on its
-own locked 100-case test split in `data/th_curated_1200/test.jsonl` (400 typed decisions), through
-the served MCP path. Raw evidence: `artifacts/live-test-metrics.json`.
+Measured on 2026-09-28 on the six-epoch combined checkpoint
+(`configs/colab-th1200-toolcall.yaml`, selected epoch 5), after calibrate on the combined
+calibration splits. Numbers below are from the held-out test splits, not validation.
 
-| Metric | Result | Note |
-| --- | ---: | --- |
-| Action choice accuracy (exact match) | **75.0%** | 16 points above the 59.0% majority baseline |
-| Action soft-target accuracy | 50.0% | |
-| Majority-class baseline | 59.0% | always predicting `execute` |
-| Score QWK (risk 0-4) | **0.562** | |
-| Score within-one accuracy | 87.0% | |
-| Risk head mean by gold level 0→4 | 1.38 / 1.76 / 2.18 / 2.42 / 2.86 | monotone, spread **1.474** |
-| `prohibited` separation (gold true vs false) | **0.390** | 0.678 vs 0.287 |
+**Tool-call split** (`data/tool_call_400/test.jsonl`, 36 cases, 144 decisions):
 
-The checkpoint's own `test-report.json` in the Hugging Face snapshot reports 0.8675 overall accuracy
-and 0.842 score QWK for the same split, using a fitted score-threshold decoder that the runtime does
-not apply. The numbers above are the uncalibrated runtime path, which is why they are lower.
+| Metric | Result | Gate | Status |
+| --- | ---: | --- | --- |
+| Action choice accuracy | 69.4% | ≥ 70%, baseline 38.9% | marginal |
+| Score QWK | 0.893 | ≥ 0.55 | passes |
+| Risk head spread | 2.66 | ≥ 1.0 | passes |
+| `prohibited` separation | 0.311 | ≥ 0.30 | passes |
+| `prohibited` gold-false mean | 0.241 | < 0.30 | passes |
+| Abstain rate | 0.472 | ≤ 0.60 | passes |
+| `needs_review` separation | **-0.404** | ≥ 0.30 | **fails, structurally** |
+
+**Thai split** (`data/th_curated_1200/test.jsonl`, 100 cases, 400 decisions), same checkpoint:
+
+| Metric | Before (th1200) | After | Gate | Status |
+| --- | ---: | ---: | --- | --- |
+| Overall accuracy | 75.0% | 81.75% | | |
+| Action choice accuracy | 75.0% | 83.0% | ≥ 70%, baseline 59% | passes |
+| Noul accuracy | — | 91.0% | | |
+| Score QWK | 0.562 | 0.846 | ≥ 0.55 | passes |
+| Risk head spread | 1.474 | 2.86 | ≥ 1.0 | passes |
+| `needs_review` separation | 0.127 | 0.418 | | |
+| `prohibited` separation | 0.390 | 0.461 | ≥ 0.30 | passes |
+| Abstain rate | 1.000 | 0.370 | ≤ 0.60 | passes |
+
+Training on the tool-call corpus moved the model from 36.1% to 69.4% action accuracy on tool calls
+with no loss on Thai, so enforcement criterion 5 is met in substance. Paraphrase stability
+(criterion 4) is still unmeasured.
+
+**Enforcement stays off.** `needs_review` is a deterministic function of the action label in every
+case of both corpora, so the `ask_user` gate rule is inverted on tool calls. That is a labelling
+defect, and the details are in [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
 
 #### Known limitations
 
-- **The question text is model input.** The checkpoints were trained with exactly one question
-  block, the one carried by all 1,400 cases of `data/th_curated_1200`. Asking a translated question
-  collapses the same weights from 75.0% to 26.7% action accuracy and from a 1.474 risk spread to
-  0.181. `jevbro.questions` now returns the trained prompt verbatim and a test pins it to the data.
-- **It abstains on everything.** Mean action confidence is 0.211 against the default 0.6 threshold,
-  so `abstain` is true and `decision` is null for every request. The gated signal comes from
-  `needs_review` and `prohibited` instead.
-- **It has never seen tool calls.** On `data/tool_call_400/test.jsonl` (36 cases) it scores 36.1%
-  action accuracy against a 38.9% majority baseline, i.e. below guessing, and the risk spread is
-  0.565 against 1.474 on its own distribution. The distribution the hook actually sends is
-  uncovered.
-- Training contexts are short (mean 70 characters, max 140) while real agent sessions reach 460.
-  The `tool_call_400` slice closes that gap at 431 hand-written cases (409 English, 22 Thai), 22%
-  of the combined corpus. It is large enough to train on; it is not a guarantee that training
-  works.
+The question text is model input. The checkpoints were trained with exactly one question block, the
+one carried by all 1,400 cases of `data/th_curated_1200`. Asking a translated question set collapses
+the same weights from 75.0% to 26.7% action accuracy and from a 1.474 risk spread to 0.181.
+`jevbro.questions` returns the trained prompt verbatim and a test pins it to the data.
+
+- **`needs_review` is not an independent signal in the corpora.** In all 1,400 Thai cases and all
+  431 tool-call cases, `needs_review == (action != "execute")` with no exceptions, so the noul head
+  can only restate the action label. The gate turns `needs_review >= 0.5` into `ask_user`, which
+  means *ask when the model is confident*; measured separation on the tool-call split is -0.404.
+  `validate_dataset.py` now fails on this unless the corpus is acknowledged as affected. Relabelling
+  the Thai corpus needs human judgement per case and has not been done. See
+  [`docs/ENFORCEMENT_GATE.md`](docs/ENFORCEMENT_GATE.md).
+- **The risk level 3 is confused with 2 on the Thai split.** With the threshold decoder fitted on
+  the combined calibration set, level-3 recall is 0.15 while argmax gives 0.80. The shared
+  thresholds are a compromise; `score_decoder: argmax` is the better choice for Thai requests and
+  threshold the better one for tool calls.
 
 #### Why th1200?
 

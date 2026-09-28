@@ -38,6 +38,11 @@ jev-my-bro is a self-hosted typed decision model specialized for agent/tool gove
 2. Never fit calibration on validation or test.
 3. Keep probability targets normalized.
 4. Run `python scripts/validate_dataset.py --root data/hf_expanded` for the active dataset.
+   The validator fails when `needs_review` is a deterministic function of the action label,
+   because that makes the noul `needs_review` head uninformative and inverts the `ask_user`
+   gate rule. Both `data/th_curated_1200` and `data/tool_call_400` are currently in that state,
+   so they need `--allow-degenerate-needs-review` until they are relabelled. Do not add that flag
+   to silence a corpus that is not known to be affected.
 5. Run pytest for repository tests.
 6. Compile all changed Python modules.
 7. Run Go tests for server/go when the gateway changes.

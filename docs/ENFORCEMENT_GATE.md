@@ -85,6 +85,29 @@ artifact in `artifacts/`.
 
 Reverting is setting `JEV_ENFORCE=0`; no code change is required.
 
+## Known blocker: `needs_review` is degenerate in the corpora
+
+Measured 2026-09-28, `needs_review == (action != "execute")` in **every case** of both
+`data/th_curated_1200` (1,400 cases) and `data/tool_call_400` (431 cases), with no exceptions.
+`scripts/validate_dataset.py` now fails on this by default.
+
+The question therefore carries no information the action head does not already carry. The gate turns
+`needs_review >= 0.5` into `ask_user`, which with a degenerate corpus means *ask when the model
+predicts `execute`*. The measurement confirms it: on `data/tool_call_400/test.jsonl` the
+`needs_review` separation is **-0.404** (gold-true mean 0.285, gold-false mean 0.689), while the
+same head measures +0.418 on the Thai split. `by_primitive.noul.accuracy` on the tool-call split is
+0.458, near chance.
+
+This is a defect in the labels, not in the model. Two combinations are missing from the corpora
+entirely:
+
+- `execute` with `needs_review: true` — safe, but policy requires a sign-off
+- `reject` with `needs_review: false` — so clearly prohibited that no approval path exists
+
+Until the labels carry those, the `ask_user` path may not rely on `needs_review`. The only gate
+inputs that carry independent signal are the action head and the `prohibited` head. Relabelling
+1,400 Thai cases requires human judgement per case and has not been done.
+
 ## If the criteria cannot be met
 
 Do not gate on the model. The hard safety floor in `hooks/claude_pre_tool_use.py` is the honest
